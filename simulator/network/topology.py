@@ -79,6 +79,37 @@ class NetworkTopology:
         return topo
 
     @classmethod
+    def mesh(
+        cls,
+        rows: int = 2,
+        cols: int = 3,
+        capacity: float = 10.0,
+        delay: float = 0.005,
+        queue_size: int = 20,
+    ) -> "NetworkTopology":
+        topo = cls(TopologyType.MESH)
+        nodes: list[list[Node]] = []
+        for r in range(rows):
+            row = []
+            for c in range(cols):
+                n = Node(
+                    id=f"n{r}{c}",
+                    queues=[QueueManager(max_size=queue_size, service_rate=capacity)],
+                )
+                topo.add_node(n)
+                row.append(n)
+            nodes.append(row)
+        for r in range(rows):
+            for c in range(cols):
+                if c + 1 < cols:
+                    topo.add_link(Link(nodes[r][c], nodes[r][c + 1], capacity, delay))
+                    topo.add_link(Link(nodes[r][c + 1], nodes[r][c], capacity, delay))
+                if r + 1 < rows:
+                    topo.add_link(Link(nodes[r][c], nodes[r + 1][c], capacity, delay))
+                    topo.add_link(Link(nodes[r + 1][c], nodes[r][c], capacity, delay))
+        return topo
+
+    @classmethod
     def multi_hop(
         cls,
         n_hops: int = 3,

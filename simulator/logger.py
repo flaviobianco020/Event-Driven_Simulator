@@ -48,6 +48,14 @@ class TraceLogger:
                   f"flow={flow.id}  {flow.model.value}  "
                   f"{flow.source.id}→{flow.destination.id}  rate={flow.rate} pkt/s")
 
+    def flow_stop(self, t: float, flow) -> None:
+        self._log(LogLevel.SUMMARY, t, "FLOW_STOP",
+                  f"flow={flow.id}  {flow.model.value}  {flow.source.id}→{flow.destination.id}")
+
+    def link_rate_change(self, t: float, link, new_rate: float) -> None:
+        self._log(LogLevel.SUMMARY, t, "LINK_RATE_CHANGE",
+                  f"link={link.source.id}→{link.target.id}  new_rate={new_rate} pkt/s")
+
     def packet_generate(self, t: float, pkt, flow) -> None:
         self._log(LogLevel.DEBUG, t, "PACKET_GENERATE",
                   f"pkt={pkt.id}  flow={flow.id}  size={pkt.size}B  pri={pkt.priority}")

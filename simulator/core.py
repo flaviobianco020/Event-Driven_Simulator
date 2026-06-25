@@ -67,13 +67,21 @@ class Simulator:
         reg(EventType.PACKET_ARRIVAL,  self._on_packet_arrival)
         reg(EventType.PACKET_DELIVER,  self._on_packet_deliver)
         reg(EventType.METRIC_SAMPLE,   self._on_metric_sample)
+        reg(EventType.FLOW_STOP,       self._on_flow_stop)
         reg(EventType.LINK_FAILURE,    self._on_link_failure)
         reg(EventType.LINK_RECOVERY,   self._on_link_recovery)
+        reg(EventType.LINK_RATE_CHANGE, self._on_link_rate_change)
         reg(EventType.STATE_UPDATE,    self._on_state_update)
 
     # ------------------------------------------------------------------
     # Event handlers
     # ------------------------------------------------------------------
+
+    def _on_flow_stop(self, event: Event, scheduler: EventScheduler) -> None:
+        flow = event.metadata.get("flow")
+        if flow:
+            flow.active = False
+            self._log.flow_stop(event.simulation_time, flow)
 
     def _on_flow_start(self, event: Event, scheduler: EventScheduler) -> None:
         flow = event.metadata["flow"]
@@ -261,6 +269,14 @@ class Simulator:
                 simulation_time=t + self.metric_interval,
                 type=EventType.METRIC_SAMPLE,
             ))
+
+    def _on_link_rate_change(self, event: Event, scheduler: EventScheduler) -> None:
+        link = event.link
+        new_rate = event.metadata.get("new_rate")
+        if link and new_rate is not None:
+            link.capacity = new_rate
+            link.target.default_queue.service_rate = new_rate
+            self._log.link_rate_change(event.simulation_time, link, new_rate)
 
     def _on_link_failure(self, event: Event, scheduler: EventScheduler) -> None:
         if event.link:
