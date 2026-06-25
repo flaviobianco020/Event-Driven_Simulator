@@ -225,10 +225,41 @@ def test_metrics_engine_records_correctly():
     m = MetricsEngine()
     m.record_generated()
     m.record_generated()
-    m.record_delivered(0.01)
+    m.record_delivered(0.01, flow_id=0)
     m.record_dropped()
     assert m.total_generated == 2
     assert m.total_delivered == 1
     assert m.total_dropped == 1
     assert m.collect_packet_delivery_ratio() == pytest.approx(0.5)
     assert m.collect_end_to_end_latency() == pytest.approx(0.01)
+
+def test_fairness_single_flow():
+    m = MetricsEngine()
+    for _ in range(10):
+        m.record_delivered(0.01, flow_id=0)
+    assert m.collect_fairness() == pytest.approx(1.0)
+
+def test_fairness_perfectly_equal():
+    m = MetricsEngine()
+    for _ in range(5):
+        m.record_delivered(0.01, flow_id=0)
+        m.record_delivered(0.01, flow_id=1)
+    assert m.collect_fairness() == pytest.approx(1.0)
+
+def test_fairness_unequal():
+    m = MetricsEngine()
+    for _ in range(9):
+        m.record_delivered(0.01, flow_id=0)
+    m.record_delivered(0.01, flow_id=1)   # flow 1 gets only 1 out of 10
+    # J = (10)^2 / (2 * (81+1)) = 100/164 ≈ 0.61
+    assert m.collect_fairness() < 1.0
+    assert m.collect_fairness() > 0.0
+
+def test_link_rate_change_affects_source_queue():
+    topo = NetworkTopology.single_bottleneck(n_sources=1, bottleneck_capacity=10.0)
+    link = topo.get_link("router", "dst")
+    router = topo.get_node("router")
+    assert router.default_queue.service_rate == pytest.approx(10.0)
+    link.capacity = 4.0
+    router.default_queue.service_rate = 4.0
+    assert router.default_queue.service_rate == pytest.approx(4.0)

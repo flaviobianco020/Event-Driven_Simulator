@@ -14,6 +14,7 @@ class MetricSnapshot:
     end_to_end_latency: float
     queue_occupancy: float
     drop_count: int
+    fairness: float = 1.0
     compression_ratio: float = 1.0
     congestion_state_transitions: int = 0
 
@@ -28,14 +29,17 @@ class MetricsEngine:
         self._snapshots: list[MetricSnapshot] = []
         self._last_snapshot_time = 0.0
         self._delivered_since_last = 0
+        self._delivered_per_flow: dict[int, int] = {}   # flow_id → delivered count
 
     def record_generated(self) -> None:
         self._generated += 1
 
-    def record_delivered(self, latency: float) -> None:
+    def record_delivered(self, latency: float, flow_id: int | None = None) -> None:
         self._delivered += 1
         self._delivered_since_last += 1
         self._total_latency += latency
+        if flow_id is not None:
+            self._delivered_per_flow[flow_id] = self._delivered_per_flow.get(flow_id, 0) + 1
 
     def record_dropped(self) -> None:
         self._dropped += 1
@@ -58,7 +62,14 @@ class MetricsEngine:
         return sum(occs) / len(occs) if occs else 0.0
 
     def collect_fairness(self) -> float:
-        return 1.0  # Jain's index — placeholder for Phase 2
+        """Jain's Fairness Index: J = (Σxi)² / (n·Σxi²)  ∈ (0,1], 1=perfectly fair."""
+        counts = list(self._delivered_per_flow.values())
+        n = len(counts)
+        if n == 0:
+            return 1.0
+        s1 = sum(counts)
+        s2 = sum(c * c for c in counts)
+        return (s1 * s1) / (n * s2) if s2 > 0 else 1.0
 
     def collect_compression_ratio(self) -> float:
         return 1.0  # placeholder for Phase 2
@@ -74,6 +85,7 @@ class MetricsEngine:
             end_to_end_latency=self.collect_end_to_end_latency(),
             queue_occupancy=self.collect_queue_occupancy(nodes),
             drop_count=self._dropped,
+            fairness=self.collect_fairness(),
             congestion_state_transitions=self._state_transitions,
         )
         self._snapshots.append(snap)

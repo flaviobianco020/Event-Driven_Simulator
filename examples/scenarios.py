@@ -88,17 +88,19 @@ def scenario_bandwidth_degradation(logger: TraceLogger) -> None:
     src0, src1, dst = topology.get_node("src0"), topology.get_node("src1"), topology.get_node("dst")
     gen = (
         TrafficGenerator()
+        # total load = 7+5 = 12 pkt/s; after degradation cap=4 → heavy overload → drops
         .add_flow(Flow(FlowModel.POISSON, _video_class(),   src0, dst, rate=7.0))
-        .add_flow(Flow(FlowModel.CONTROL, _control_class(), src1, dst, rate=2.0))
+        .add_flow(Flow(FlowModel.CONTROL, _control_class(), src1, dst, rate=5.0))
     )
-    sim = Simulator(config, topology, gen, MetricsEngine(), end_time=80.0, metric_interval=10.0, logger=logger)
+    sim = Simulator(config, topology, gen, MetricsEngine(), end_time=90.0, metric_interval=10.0, logger=logger)
     bottleneck = topology.get_link("router", "dst")
-    # At t=30 bandwidth drops from 10→4 pkt/s; at t=60 restores to 10
+    # t=30: 10→4 pkt/s (load 12 >> cap 4 → massive drops)
+    # t=60: restored to 10 pkt/s (still overloaded but manageable)
     sim.scheduler.schedule_event(Event(simulation_time=30.0, type=EventType.LINK_RATE_CHANGE,
                                        link=bottleneck, metadata={"new_rate": 4.0}))
     sim.scheduler.schedule_event(Event(simulation_time=60.0, type=EventType.LINK_RATE_CHANGE,
                                        link=bottleneck, metadata={"new_rate": 10.0}))
-    _run(sim, logger, "Scenario 3 — Sudden Bandwidth Degradation  (10→4 pkt/s at t=30, restored t=60)")
+    _run(sim, logger, "Scenario 3 — Sudden Bandwidth Degradation  (cap 10→4 at t=30, restored t=60)")
 
 
 # ── 4. Link failure and recovery ──────────────────────────────────────────────

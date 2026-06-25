@@ -250,7 +250,8 @@ class Simulator:
         pkt = event.packet
         t = event.simulation_time
         latency = t - pkt.creation_time
-        self.metrics.record_delivered(latency)
+        flow_id = pkt.flow.id if pkt.flow else None
+        self.metrics.record_delivered(latency, flow_id)
         self._log.packet_deliver(t, pkt, latency)
 
     def _on_packet_drop(self, event: Event, scheduler: EventScheduler) -> None:
@@ -275,7 +276,7 @@ class Simulator:
         new_rate = event.metadata.get("new_rate")
         if link and new_rate is not None:
             link.capacity = new_rate
-            link.target.default_queue.service_rate = new_rate
+            link.source.default_queue.service_rate = new_rate  # bottleneck is at source node
             self._log.link_rate_change(event.simulation_time, link, new_rate)
 
     def _on_link_failure(self, event: Event, scheduler: EventScheduler) -> None:

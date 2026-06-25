@@ -119,6 +119,7 @@ class TraceLogger:
             f"PDR={snap.packet_delivery_ratio:.3f}  "
             f"lat={snap.end_to_end_latency*1000:7.2f}ms  "
             f"q_occ={snap.queue_occupancy:.3f}  "
+            f"fairness={snap.fairness:.3f}  "
             f"drops={snap.drop_count:4d}  "
             f"state={router_state}",
         )
