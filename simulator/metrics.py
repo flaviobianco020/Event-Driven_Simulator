@@ -30,6 +30,9 @@ class MetricsEngine:
         self._last_snapshot_time = 0.0
         self._delivered_since_last = 0
         self._delivered_per_flow: dict[int, int] = {}   # flow_id → delivered count
+        # compression tracking (Phase 2)
+        self._bytes_original: int = 0
+        self._bytes_compressed: int = 0
 
     def record_generated(self) -> None:
         self._generated += 1
@@ -71,8 +74,15 @@ class MetricsEngine:
         s2 = sum(c * c for c in counts)
         return (s1 * s1) / (n * s2) if s2 > 0 else 1.0
 
+    def record_compression(self, compressed_size: int, original_size: int) -> None:
+        self._bytes_original += original_size
+        self._bytes_compressed += compressed_size
+
     def collect_compression_ratio(self) -> float:
-        return 1.0  # placeholder for Phase 2
+        """Returns original/compressed — matches paper convention (6.1× = 6.1)."""
+        if self._bytes_compressed == 0:
+            return 1.0
+        return self._bytes_original / self._bytes_compressed
 
     def collect_congestion_state_transitions(self) -> int:
         return self._state_transitions
@@ -86,6 +96,7 @@ class MetricsEngine:
             queue_occupancy=self.collect_queue_occupancy(nodes),
             drop_count=self._dropped,
             fairness=self.collect_fairness(),
+            compression_ratio=self.collect_compression_ratio(),
             congestion_state_transitions=self._state_transitions,
         )
         self._snapshots.append(snap)

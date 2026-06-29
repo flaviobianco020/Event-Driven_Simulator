@@ -5,9 +5,16 @@ from .config import ConfigurationManager
 from .event import Event, EventType
 from .scheduler import EventScheduler
 from .network.topology import NetworkTopology
+from .network.congestion import (
+    CongestionStateMachine,
+    PHASE2_EWMA_ALPHA,
+    PHASE2_ESCALATION_DEBOUNCE,
+    PHASE2_DEESCALATION_COOLDOWN,
+)
 from .traffic.generator import TrafficGenerator
 from .metrics import MetricsEngine
 from .logger import TraceLogger, LogLevel
+from .control import CompressionEngine, RuleBasedController
 
 
 class Simulator:
@@ -20,6 +27,7 @@ class Simulator:
         end_time: float = 100.0,
         metric_interval: float = 10.0,
         logger: Optional[TraceLogger] = None,
+        enable_phase2: bool = False,
     ) -> None:
         self.config = config
         self.topology = topology
@@ -30,7 +38,20 @@ class Simulator:
         self.scheduler = EventScheduler()
         self._rng = random.Random(config.random_seed)
         self._log = logger or TraceLogger(level=LogLevel.NONE)
+        self._compression_engine = CompressionEngine()
+        self._controller = RuleBasedController()
+        if enable_phase2:
+            self._configure_phase2_nodes()
         self._register_handlers()
+
+    def _configure_phase2_nodes(self) -> None:
+        """Replace node state machines with Phase 2 EWMA+hysteresis config (paper §3.3)."""
+        for node in self.topology.nodes:
+            node.state_machine = CongestionStateMachine(
+                ewma_alpha=PHASE2_EWMA_ALPHA,
+                escalation_debounce=PHASE2_ESCALATION_DEBOUNCE,
+                deescalation_cooldown=PHASE2_DEESCALATION_COOLDOWN,
+            )
 
     # ------------------------------------------------------------------
     # Public API
@@ -139,6 +160,7 @@ class Simulator:
             return
 
         pkt.enqueue_time = t
+        self._compression_engine.compress(pkt, node.state_machine.current_state)
         success = queue.enqueue(pkt)
         if not success:
             self._log.queue_full_drop(t, pkt, node)
@@ -151,7 +173,8 @@ class Simulator:
             return
 
         self._log.queue_enqueue(t, pkt, node)
-        dequeue_t = queue.next_service_completion(t)
+        size_ratio = pkt.compressed_size / pkt.size
+        dequeue_t = queue.next_service_completion(t, size_ratio=size_ratio)
         scheduler.schedule_event(Event(
             simulation_time=dequeue_t,
             type=EventType.QUEUE_DEQUEUE,
@@ -252,6 +275,7 @@ class Simulator:
         latency = t - pkt.creation_time
         flow_id = pkt.flow.id if pkt.flow else None
         self.metrics.record_delivered(latency, flow_id)
+        self.metrics.record_compression(pkt.compressed_size, pkt.size)
         self._log.packet_deliver(t, pkt, latency)
 
     def _on_packet_drop(self, event: Event, scheduler: EventScheduler) -> None:
@@ -290,4 +314,4 @@ class Simulator:
             self._log.link_recovery(event.simulation_time, event.link)
 
     def _on_state_update(self, event: Event, scheduler: EventScheduler) -> None:
-        pass  # hook for Phase 2 control layer
+        self._controller.react(event, scheduler)

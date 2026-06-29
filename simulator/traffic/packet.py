@@ -20,6 +20,10 @@ class Packet:
     enqueue_time: float = field(default=0.0)
     path: list["Link"] = field(default_factory=list, repr=False)
     hop: int = field(default=0)
+    compressed_size: int = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.compressed_size = self.size
 
     def __repr__(self) -> str:
         fid = self.flow.id if self.flow else "?"

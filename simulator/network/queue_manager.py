@@ -41,8 +41,8 @@ class QueueManager:
     def drop(self, packet: "Packet") -> None:
         self.drop_events += 1
 
-    def next_service_completion(self, current_time: float) -> float:
-        service_duration = 1.0 / self.service_rate
+    def next_service_completion(self, current_time: float, size_ratio: float = 1.0) -> float:
+        service_duration = size_ratio / self.service_rate
         start = max(current_time, self._server_free_at)
         self._server_free_at = start + service_duration
         return self._server_free_at

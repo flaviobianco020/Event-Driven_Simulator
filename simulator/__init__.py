@@ -12,6 +12,7 @@ from .traffic.generator import TrafficGenerator
 from .metrics import MetricsEngine, MetricSnapshot
 from .core import Simulator
 from .logger import TraceLogger, LogLevel
+from .control import CompressionEngine, RuleBasedController
 
 __all__ = [
     "ConfigurationManager",
@@ -24,4 +25,5 @@ __all__ = [
     "TrafficGenerator",
     "MetricsEngine", "MetricSnapshot",
     "Simulator",
+    "CompressionEngine", "RuleBasedController",
 ]
