@@ -1,0 +1,104 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "EDS: Demo (summary)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/examples/phase1_demo.py",
+      "args": ["summary"],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "EDS: Demo (debug)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/examples/phase1_demo.py",
+      "args": ["debug"],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "EDS: All Scenarios",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/examples/scenarios.py",
+      "args": ["all", "summary"],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "EDS: Scenario 1 – Single Bottleneck",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/examples/scenarios.py",
+      "args": ["1", "summary"],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "EDS: Scenario 2 – Flash Crowd",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/examples/scenarios.py",
+      "args": ["2", "summary"],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "EDS: Scenario 3 – Bandwidth Degradation",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/examples/scenarios.py",
+      "args": ["3", "summary"],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "EDS: Scenario 4 – Link Failure & Recovery",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/examples/scenarios.py",
+      "args": ["4", "summary"],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "EDS: Scenario 5 – Persistent Overload",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/examples/scenarios.py",
+      "args": ["5", "summary"],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "EDS: Scenario 6 – Mixed Traffic",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/examples/scenarios.py",
+      "args": ["6", "summary"],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Tests: Run All (pytest)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["tests/test_phase1.py", "-v"],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Tests: Debug Current Test File",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["${file}", "-v", "-s"],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    }
+  ]
+}

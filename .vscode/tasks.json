@@ -1,0 +1,29 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "EDS: Run All Scenarios",
+      "type": "shell",
+      "command": "python3 examples/scenarios.py all summary",
+      "group": "build",
+      "presentation": { "reveal": "always", "panel": "shared" },
+      "problemMatcher": []
+    },
+    {
+      "label": "EDS: Run Tests",
+      "type": "shell",
+      "command": "python3 -m pytest tests/test_phase1.py -v",
+      "group": { "kind": "test", "isDefault": true },
+      "presentation": { "reveal": "always", "panel": "shared" },
+      "problemMatcher": []
+    },
+    {
+      "label": "EDS: Run Demo",
+      "type": "shell",
+      "command": "python3 examples/phase1_demo.py summary",
+      "group": "build",
+      "presentation": { "reveal": "always", "panel": "shared" },
+      "problemMatcher": []
+    }
+  ]
+}
