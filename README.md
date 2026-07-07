@@ -288,3 +288,33 @@ def _on_state_update(self, event: Event, scheduler: EventScheduler) -> None:
 ```
 
 Phase 2 will register a control agent here to react to `STATE_UPDATE` events with compression and routing decisions.
+
+---
+
+## Phase 3 — MAPPO (Multi-Agent Reinforcement Learning)
+
+Implementazione fedele al documento tecnico *"MAPPO — Fase 3 EDS"*
+(`generate_mappo_doc.py`): il controllo della congestione diventa una policy
+appresa con Multi-Agent Proximal Policy Optimization (CTDE).
+
+| Componente | File | Specifica (doc) |
+|---|---|---|
+| Actor π(a\|o,θ) | `simulator/marl/networks.py` | 7→LayerNorm→64→Tanh→64→Tanh→3→Softmax (Tab. 5) |
+| Critic V(s,φ) | `simulator/marl/networks.py` | (7N+4)→LayerNorm→128→Tanh→128→Tanh→1 (Tab. 6, N=1: 18.177 param) |
+| GAE + rollout | `simulator/marl/buffer.py` | γ=0.99, λ=0.95, T=2048 (§3.3, Tab. 4) |
+| Update PPO-CLIP | `simulator/marl/mappo.py` | ε=0.2, K=10 epoch, minibatch 256, lr 3e-4/1e-3, grad clip 10 (Tab. 4) |
+| Ambiente Dec-POMDP | `simulator/marl/env.py` | obs dim=7 (Tab. 7), azioni {ESCALATE, MAINTAIN, DE-ESCALATE} (Tab. 8), reward = PDR − 0.3·drop − 0.2·lat/2s + 0.2·Jain (Tab. 9), Δt=1 s |
+| Controller deploy | `simulator/marl/controller.py` | sostituto di `RuleBasedController.react()` (§7.1); solo Actor a runtime |
+| Pipeline training | `examples/train_mappo.py` | 500 episodi, scenario random 1–6 da 100 s, eval argmax ogni 50, export JSON (Tab. 10) |
+
+```bash
+pip install numpy                      # unica dipendenza (solo Fase 3)
+python3 examples/train_mappo.py        # training completo (500 episodi)
+python3 examples/train_mappo.py --quick   # smoke test
+python3 -m pytest tests/test_phase3.py -v # 19 test (incl. verifica gradienti)
+```
+
+Il checkpoint `checkpoints/mappo_best.json` contiene i pesi in JSON puro:
+l'Actor si carica senza PyTorch (`MARLController.from_checkpoint(...)`) ed è
+pronto per il deploy nel container router dell'emulatore ContainerLab
+(repo `eds-containerlab`), come previsto dalla Tabella 10 del documento.

@@ -119,3 +119,17 @@ class MetricsEngine:
     @property
     def total_dropped(self) -> int:
         return self._dropped
+
+    # ── Phase 3 (MARL) read-only accessors ────────────────────────────────────
+    # The MAPPO environment computes per-window deltas of these counters to
+    # build the reward r_t = PDR − λd·drop − λl·lat/lat_max + λf·J (doc §6).
+
+    @property
+    def total_latency(self) -> float:
+        """Cumulative sum of end-to-end latencies of all delivered packets."""
+        return self._total_latency
+
+    @property
+    def delivered_per_flow(self) -> dict[int, int]:
+        """Copy of the per-flow delivered-packet counters (flow_id → count)."""
+        return dict(self._delivered_per_flow)

@@ -1,0 +1,3 @@
+# Il simulatore base (Fase 1-2) usa solo la libreria standard.
+# numpy serve SOLO per la Fase 3 (simulator/marl — MAPPO).
+numpy>=1.24

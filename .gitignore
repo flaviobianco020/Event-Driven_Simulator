@@ -1,0 +1,10 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Artefatti di training Fase 3 (MAPPO)
+checkpoints/
+
+# Log runtime
+logs/*.log
