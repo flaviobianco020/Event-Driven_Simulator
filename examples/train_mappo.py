@@ -41,16 +41,22 @@ SCENARIOS = (1, 2, 3, 4, 5, 6)
 CKPT_DIR = os.path.join(os.path.dirname(__file__), "..", "checkpoints")
 
 
-def evaluate(actor: Actor, seed: int = 10_000) -> dict:
+def evaluate(actor: Actor, seed: int = 10_000,
+             stability_penalty: float = 0.0) -> dict:
     """
     Esecuzione deterministica (argmax) sui 6 scenari canonici con i loro
     end_time originali. Restituisce metriche per scenario + reward medio.
+    stability_penalty > 0: il reward di valutazione include la penalita' di
+    transizione, per selezionare il best coerentemente con il training.
     """
     rng = np.random.default_rng(seed)
     per_scenario: dict[int, dict] = {}
     rewards = []
     for sc in SCENARIOS:
-        env = EDSMarlEnv(sc, seed=seed + sc)
+        # se il training usa una penalita' di stabilita', la valutazione la
+        # applica anch'essa: cosi' il best selezionato riflette l'obiettivo
+        # reale (task + stabilita'), non solo il task.
+        env = EDSMarlEnv(sc, seed=seed + sc, stability_penalty=stability_penalty)
         obs, _state = env.reset()
         done, ep_rew, steps = False, 0.0, 0
         while not done:
@@ -158,7 +164,7 @@ def main() -> None:
                   f"r/step (ultimi 10 ep) = {recent:.4f}")
 
         if ep % EVAL_EVERY == 0 or ep == episodes:
-            ev = evaluate(actor)
+            ev = evaluate(actor, stability_penalty=stab)
             print_eval(ev, ep)
             if ev["mean_reward"] > best_reward:
                 best_reward = ev["mean_reward"]
