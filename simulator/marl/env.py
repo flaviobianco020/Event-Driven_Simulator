@@ -174,9 +174,15 @@ class EDSMarlEnv:
 
     def __init__(self, scenario: int, seed: int = 42,
                  end_time: float | None = None,
-                 agent_node_ids: list[str] | None = None) -> None:
+                 agent_node_ids: list[str] | None = None,
+                 stability_penalty: float = 0.0) -> None:
         self.scenario = scenario
         self.seed = seed
+        # penalita' opzionale per ogni cambio di stato (reward shaping):
+        # r_t -= stability_penalty * (numero di transizioni nel passo).
+        # 0.0 = reward esatto del documento (Tabella 9). Non influenza la
+        # policy in deploy: agisce solo sul segnale di training.
+        self.stability_penalty = float(stability_penalty)
         topo, gen, extra_events, canonical_end = _build_scenario(scenario, seed)
         self.end_time = float(end_time if end_time is not None else canonical_end)
         self.topology = topo
@@ -276,6 +282,8 @@ class EDSMarlEnv:
     # ── reward (doc §6, Tabella 9) ───────────────────────────────────────────
 
     def _reward(self, deltas: dict) -> float:
+        """Reward base del documento (§6). L'eventuale penalita' di stabilita'
+        viene sottratta in step(), non qui, perche' dipende dall'azione."""
         gen_w = deltas["gen"]
         pdr = deltas["del"] / gen_w if gen_w > 0 else 1.0
         drop = min(deltas["drop"] / gen_w, 1.0) if gen_w > 0 else 0.0
@@ -312,6 +320,7 @@ class EDSMarlEnv:
         Restituisce (obs, stato_globale, reward, done, info).
         """
         # 1. applica le azioni (doc §7.1: node.state_machine.transition)
+        n_transitions = 0
         for node, a in zip(self._nodes, np.asarray(actions, dtype=int)):
             cur = node.state_machine.current_state.value
             if a == ESCALATE:
@@ -323,6 +332,7 @@ class EDSMarlEnv:
             if new != cur:
                 changed = node.state_machine.transition(CongestionState(new), self.t)
                 if changed:
+                    n_transitions += 1
                     self.metrics.record_state_transition()
                     self.sim.scheduler.schedule_event(Event(
                         simulation_time=self.t, type=EventType.STATE_UPDATE,
@@ -332,14 +342,14 @@ class EDSMarlEnv:
         self.t += DT
         self.sim.scheduler.run_until(self.t)
 
-        # 3-4. osservazioni + reward dalla finestra
+        # 3-4. osservazioni + reward dalla finestra (meno la penalita' di stabilita')
         deltas = self._window_deltas()
-        reward = self._reward(deltas)
+        reward = self._reward(deltas) - self.stability_penalty * n_transitions
         obs, state = self._observe(deltas)
         self._commit_window()
 
         done = self.t >= self.end_time - 1e-9
-        info = {"t": self.t, "deltas": deltas,
+        info = {"t": self.t, "deltas": deltas, "transitions": n_transitions,
                 "states": [n.state_machine.current_state.name for n in self._nodes]}
         return obs, state, reward, done, info
 

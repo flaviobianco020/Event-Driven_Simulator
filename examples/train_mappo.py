@@ -84,10 +84,20 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--quick", action="store_true",
                     help="smoke test: 10 episodi, rollout 256")
+    ap.add_argument("--stability-penalty", type=float, default=0.0,
+                    help="penalita' di reward per ogni transizione di stato "
+                         "(reward shaping, es. 0.03). 0 = reward del documento.")
     args = ap.parse_args()
 
     episodes = 10 if args.quick else args.episodes
     rollout_t = 256 if args.quick else ROLLOUT_T
+    stab = args.stability_penalty
+
+    # suffisso distinto per i run con reward shaping: non sovrascrive
+    # il checkpoint "vanilla" (reward del documento)
+    suffix = "_stab" if stab > 0 else ""
+    best_path = os.path.join(CKPT_DIR, f"mappo_best{suffix}.json")
+    last_path = os.path.join(CKPT_DIR, f"mappo_last{suffix}.json")
 
     os.makedirs(CKPT_DIR, exist_ok=True)
     rng = np.random.default_rng(args.seed)
@@ -104,6 +114,8 @@ def main() -> None:
           f"parametri (N={n_agents})")
     print(f"  episodi={episodes}  rollout={rollout_t}  "
           f"eval ogni {EVAL_EVERY} episodi")
+    if stab > 0:
+        print(f"  stability penalty = {stab} per transizione (reward shaping)")
     print("=" * 68)
 
     best_reward = -np.inf
@@ -114,7 +126,7 @@ def main() -> None:
     for ep in range(1, episodes + 1):
         scenario = int(rng.choice(SCENARIOS))
         env = EDSMarlEnv(scenario, seed=int(rng.integers(1, 2**31)),
-                         end_time=EPISODE_END_TIME)
+                         end_time=EPISODE_END_TIME, stability_penalty=stab)
         obs, state = env.reset()
         done, ep_rew, steps = False, 0.0, 0
 
@@ -150,21 +162,21 @@ def main() -> None:
             print_eval(ev, ep)
             if ev["mean_reward"] > best_reward:
                 best_reward = ev["mean_reward"]
-                path = os.path.join(CKPT_DIR, "mappo_best.json")
-                save_checkpoint(path, actor, critic,
+                save_checkpoint(best_path, actor, critic,
                                 meta={"episode": ep,
                                       "eval_reward": best_reward,
-                                      "seed": args.seed})
-                print(f"  ✔ nuovo best (r={best_reward:.4f}) → {path}")
+                                      "seed": args.seed,
+                                      "stability_penalty": stab})
+                print(f"  ✔ nuovo best (r={best_reward:.4f}) → {best_path}")
 
-    save_checkpoint(os.path.join(CKPT_DIR, "mappo_last.json"), actor, critic,
-                    meta={"episode": episodes, "seed": args.seed})
+    save_checkpoint(last_path, actor, critic,
+                    meta={"episode": episodes, "seed": args.seed,
+                          "stability_penalty": stab})
     dt = time.time() - t0
     print("=" * 68)
     print(f"  Training completato: {episodes} episodi, {n_updates} update PPO "
           f"in {dt:.0f}s")
-    print(f"  Best eval reward: {best_reward:.4f}  "
-          f"(checkpoints/mappo_best.json)")
+    print(f"  Best eval reward: {best_reward:.4f}  ({best_path})")
     print("=" * 68)
 
 
