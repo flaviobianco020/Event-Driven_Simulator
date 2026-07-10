@@ -60,45 +60,85 @@ class SupervisorController:
         self.tick_interval = tick_interval
         self.log = SupervisorLog()
 
+    @staticmethod
+    def assess(metrics: dict) -> dict:
+        """
+        Valutazione DETERMINISTICA della salute del sistema (nessun LLM).
+        La decisione a soglia e' aritmetica banale: la fa un if, non un modello
+        da 3B (che non sa confrontare 0.997 con 0.85). L'LLM poi SPIEGA questo
+        verdetto — usa la sua forza (linguaggio), non la sua debolezza (calcolo).
+        Ritorna {health, recommended_action, target_state, reason}.
+        """
+        pdr = metrics.get("pdr", 1.0)
+        drop = metrics.get("drop_rate", 0.0)
+        # salute misurata su PDR e drop; l'utilizzo_link alto e' normale (collo saturo).
+        if pdr < 0.85 or drop > 0.15:
+            health = "CRITICO" if (pdr < 0.70 or drop > 0.30) else "DEGRADATO"
+            return {"health": health, "recommended_action": "override_state",
+                    "target_state": 3,
+                    "reason": f"PDR {pdr:.3f} (soglia 0.85) / drop {drop:.3f} (soglia 0.15)"}
+        return {"health": "SANO", "recommended_action": "endorse", "target_state": None,
+                "reason": f"PDR {pdr:.3f} e drop {drop:.3f} entro le soglie"}
+
     def _build_user_prompt(self, metrics: dict, state_traj: list) -> str:
         recent = state_traj[-10:] if state_traj else []
+        a = self.assess(metrics)
         pdr = metrics.get("pdr", 0.0)
         lat = metrics.get("latency_ms", 0.0)
         drop = metrics.get("drop_rate", 0.0)
         util = metrics.get("link_util", 0.0)
         trans = metrics.get("transitions", 0)
         compr = metrics.get("compression", 1.0)
-        # Minimale: numeri grezzi + legenda direzione (per la prosa) + regola di
-        # decisione col dominio corretto. NIENTE flag CRITICO per-metrica: iniettavano
-        # conoscenza sbagliata (link saturo != problema) e causavano override spuri.
+        # Il verdetto e' GIA' calcolato: il modello NON decide ne' confronta numeri,
+        # deve solo SPIEGARLO all'operatore e notare eventuali anomalie nella traiettoria.
         return (
-            "Direzione: PDR = piu' alto meglio (1.0 = tutto consegnato). "
-            "latenza, drop_rate = piu' basso meglio.\n"
-            "REGOLA DI DECISIONE: la salute del sistema si misura su PDR e drop_rate. "
-            "Un utilizzo_link alto (vicino a 1.0) e' NORMALE e atteso: il collo di "
-            "bottiglia e' saturo per natura, non e' un problema di per se'. "
-            "Suggerisci override_state SOLO se PDR e' basso (< 0.85) O drop_rate e' alto "
-            "(> 0.15); in tutti gli altri casi usa endorse.\n"
-            "Finestra metriche correnti:\n"
+            f"VALUTAZIONE (gia' calcolata, non ricalcolarla): sistema {a['health']}. "
+            f"Azione = {a['recommended_action']}. Motivo: {a['reason']}.\n"
+            "Metriche di contesto (PDR piu' alto e' meglio; latenza e drop piu' bassi meglio; "
+            "utilizzo_link vicino a 1.0 e' normale, il collo di bottiglia e' saturo per natura):\n"
             f"  PDR={pdr:.3f}   latenza={lat:.0f}ms   drop_rate={drop:.3f}\n"
             f"  utilizzo_link={util:.2f}   transizioni_finestra={trans}   compressione={compr:.2f}x\n"
             f"Stati recenti dell'agente veloce (0=nessuna..4=scarto, ultimi 10 tick): {recent}\n"
-            "Decidi l'azione. Giustifica citando PDR e drop_rate con la direzione corretta."
+            "Il tuo compito: conferma l'azione della valutazione e SPIEGALA in una frase "
+            "all'operatore, descrivendo la situazione e cosa fa la traiettoria di stati. "
+            "Non invertire la direzione delle metriche. Segnala se la traiettoria mostra "
+            "un'anomalia (es. oscillazioni) che la regola a soglia non coglie."
         )
 
     def tick(self, t: float, metrics: dict, state_traj: list) -> GuardrailVerdict:
         """
         Un passo del supervisore. Ritorna il verdetto del guardrail; il chiamante
         applica verdict.effective_state al percorso veloce se presente.
+
+        SEPARAZIONE decisione/spiegazione:
+          * l'AZIONE (endorse/override + stato target) e' DETERMINISTICA (assess),
+            non affidata all'aritmetica di un modello piccolo;
+          * l'LLM fornisce la SPIEGAZIONE in linguaggio naturale, e puo' elevare a
+            flag_retrain se rileva un'anomalia oltre la regola a soglia.
         """
+        a = self.assess(metrics)
         context = {"metrics": metrics, "state_trajectory": state_traj}
         user_prompt = self._build_user_prompt(metrics, state_traj)
         try:
             raw = self.backend.decide(context, SYSTEM_PROMPT, user_prompt)
-            decision = decision_from_dict(raw)
+            llm = decision_from_dict(raw)
+            justification = llm.justification
+            # L'unica azione LLM che puo' scavalcare la regola: flag_retrain
+            # (segnalazione di anomalia genuina non colta dalla soglia).
+            llm_flags_anomaly = (llm.action == Action.FLAG_RETRAIN)
         except Exception as exc:  # noqa: BLE001 — fail-safe: mai bloccare il percorso veloce
-            decision = Decision(action=Action.ENDORSE,
-                                justification=f"backend errore ({exc}); fallback endorse")
+            justification = f"backend errore ({exc}); spiegazione non disponibile"
+            llm_flags_anomaly = False
+
+        # Decisione = deterministica. La spiegazione = dall'LLM.
+        if a["recommended_action"] == "override_state":
+            decision = Decision(action=Action.OVERRIDE_STATE, justification=justification,
+                                target_state=a["target_state"], hold_seconds=30.0)
+        elif llm_flags_anomaly:
+            decision = Decision(action=Action.FLAG_RETRAIN, justification=justification)
+        else:
+            decision = Decision(action=Action.ENDORSE, justification=justification)
+
         verdict = self.guardrail.review(decision, metrics, t)
         self.log.add(t, decision, verdict)
         return verdict

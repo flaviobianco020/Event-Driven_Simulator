@@ -98,3 +98,31 @@ class TestController:
         for t in range(3):
             ctrl.tick(float(t), {"pdr": 0.9, "drop_rate": 0.0}, [])
         assert len(ctrl.log.entries) == 3
+
+
+class TestDeterministicAssess:
+    """La DECISIONE e' deterministica (non affidata all'aritmetica dell'LLM)."""
+
+    def test_healthy_when_metrics_ok(self):
+        a = SupervisorController.assess({"pdr": 0.997, "drop_rate": 0.0})
+        assert a["health"] == "SANO" and a["recommended_action"] == "endorse"
+
+    def test_override_on_low_pdr(self):
+        a = SupervisorController.assess({"pdr": 0.549, "drop_rate": 0.406})
+        assert a["recommended_action"] == "override_state" and a["health"] == "CRITICO"
+
+    def test_high_link_util_alone_is_not_a_problem(self):
+        # regressione del bug: link saturo con PDR buono NON deve dare override
+        a = SupervisorController.assess({"pdr": 0.98, "drop_rate": 0.01, "link_util": 1.0})
+        assert a["recommended_action"] == "endorse"
+
+    def test_action_is_deterministic_not_from_llm(self):
+        # anche se il backend suggerisce override, con metriche sane l'azione resta endorse
+        class AlwaysOverride(MockBackend):
+            def decide(self, *a, **k):
+                return {"action": "override_state", "target_state": 4,
+                        "hold_seconds": 60, "justification": "spinta a override"}
+        ctrl = SupervisorController(backend=AlwaysOverride())
+        ctrl.tick(0.0, {"pdr": 0.99, "drop_rate": 0.0}, [2, 2, 2])
+        assert ctrl.log.entries[-1]["action"] == "endorse"     # decisione deterministica vince
+        assert ctrl.current_override(0.0) is None
