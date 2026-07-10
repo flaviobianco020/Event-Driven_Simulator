@@ -8,3 +8,4 @@ checkpoints/
 
 # Log runtime
 logs/*.log
+logs/*.json
