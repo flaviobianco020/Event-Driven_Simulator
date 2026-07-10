@@ -8,7 +8,7 @@ Con il MockBackend (default) gira SENZA modelli installati.
 
 Uso:
     python3 examples/run_supervisor.py                 # MockBackend (nessuna dipendenza)
-    python3 examples/run_supervisor.py --backend ollama --model qwen2.5:3b-instruct
+    python3 examples/run_supervisor.py --backend ollama --model qwen2.5:3b
     python3 examples/run_supervisor.py --backend anthropic   # Claude Haiku (tetto)
 
 M1 (questa demo): explainer read-only + override vincolato dal guardrail. La
@@ -44,7 +44,7 @@ def make_backend(args):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--backend", choices=["mock", "ollama", "anthropic"], default="mock")
-    ap.add_argument("--model", default="qwen2.5:3b-instruct")
+    ap.add_argument("--model", default="qwen2.5:3b")
     args = ap.parse_args()
 
     ctrl = SupervisorController(backend=make_backend(args), guardrail=Guardrail(),

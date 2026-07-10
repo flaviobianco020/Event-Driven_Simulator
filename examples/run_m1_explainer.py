@@ -16,7 +16,7 @@ non puo' dare. (L'autorita' di controllo arriva in M2; la valutazione OOD in M3.
 Uso:
     python3 examples/run_m1_explainer.py                          # mock, scenario 3
     python3 examples/run_m1_explainer.py --scenario 5 --backend ollama \
-        --model qwen2.5:3b-instruct
+        --model qwen2.5:3b
     python3 examples/run_m1_explainer.py --backend anthropic      # Haiku (tetto)
 
 Output: log a console + JSON (default logs/m1_scenario<k>_<backend>.json) con
@@ -64,7 +64,7 @@ def _window_metrics(acc: dict, window_s: float, compression: float) -> dict:
 
 
 def run_m1(scenario: int, seed: int, ckpt: str, backend_name: str = "mock",
-           model: str = "qwen2.5:3b-instruct", window_s: float = 30.0,
+           model: str = "qwen2.5:3b", window_s: float = 30.0,
            end_time: float | None = None, verbose: bool = True) -> dict:
     """
     Esegue M1 su uno scenario. Ritorna {"supervisor_log", "summary", "n_slow_ticks"}.
@@ -139,7 +139,7 @@ def main():
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--ckpt", default=DEFAULT_CKPT)
     ap.add_argument("--backend", choices=["mock", "ollama", "anthropic"], default="mock")
-    ap.add_argument("--model", default="qwen2.5:3b-instruct")
+    ap.add_argument("--model", default="qwen2.5:3b")
     ap.add_argument("--window", type=float, default=30.0, help="finestra tick lento (s)")
     ap.add_argument("--out", default=None, help="file JSON di log (default logs/m1_...)")
     args = ap.parse_args()

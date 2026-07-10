@@ -67,14 +67,14 @@ class MockBackend(LLMBackend):
 class OllamaBackend(LLMBackend):
     """
     Modello locale via Ollama (http://localhost:11434). Usa `format` = schema JSON
-    per il constrained decoding. Modello raccomandato: 'qwen2.5:3b-instruct'.
+    per il constrained decoding. Modello raccomandato: 'qwen2.5:3b'.
     temperature=0 + seed → deterministico per la riproducibilita' della tesi.
 
-    Prerequisito:  ollama pull qwen2.5:3b-instruct
+    Prerequisito:  ollama pull qwen2.5:3b
     """
     name = "ollama"
 
-    def __init__(self, model: str = "qwen2.5:3b-instruct",
+    def __init__(self, model: str = "qwen2.5:3b",
                  host: str = "http://localhost:11434", seed: int = 0,
                  timeout: float = 30.0):
         self.model = model
