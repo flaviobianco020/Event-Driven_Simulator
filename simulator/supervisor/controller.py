@@ -60,15 +60,34 @@ class SupervisorController:
         self.tick_interval = tick_interval
         self.log = SupervisorLog()
 
+    @staticmethod
+    def _flag(value: float, good: float, bad: float, higher_better: bool) -> str:
+        """Etichetta qualitativa pre-calcolata, cosi' il modello non deve dedurre la direzione."""
+        if higher_better:
+            return "BUONO" if value >= good else ("CRITICO" if value < bad else "DEGRADATO")
+        return "BUONO" if value <= good else ("CRITICO" if value > bad else "ELEVATO")
+
     def _build_user_prompt(self, metrics: dict, state_traj: list) -> str:
         recent = state_traj[-10:] if state_traj else []
+        pdr = metrics.get("pdr", 0.0)
+        lat = metrics.get("latency_ms", 0.0)
+        drop = metrics.get("drop_rate", 0.0)
+        util = metrics.get("link_util", 0.0)
+        trans = metrics.get("transitions", 0)
+        compr = metrics.get("compression", 1.0)
+        # Direzione e flag pre-calcolati: il 3B narra, non deduce (fix scivolone PDR).
         return (
-            "Finestra metriche correnti:\n"
-            f"  PDR={metrics.get('pdr', 0):.3f}  latenza={metrics.get('latency_ms', 0):.0f}ms  "
-            f"drop_rate={metrics.get('drop_rate', 0):.3f}  compressione={metrics.get('compression', 1):.2f}x\n"
-            f"  utilizzo_link={metrics.get('link_util', 0):.2f}  transizioni_finestra={metrics.get('transitions', 0)}\n"
-            f"Stati recenti dell'agente veloce (ultimi 10 tick): {recent}\n"
-            "Decidi l'azione e giustifica."
+            "Legenda direzione: PDR e compressione = piu' ALTO e' meglio; "
+            "latenza, drop_rate, utilizzo_link, transizioni = piu' BASSO e' meglio.\n"
+            "Finestra metriche correnti (con valutazione gia' calcolata):\n"
+            f"  PDR={pdr:.3f}          [{self._flag(pdr, 0.90, 0.70, True)}]   (consegna; <0.90 = degrado)\n"
+            f"  latenza={lat:.0f}ms      [{self._flag(lat, 300, 800, False)}]   (<300 buona, >800 critica)\n"
+            f"  drop_rate={drop:.3f}     [{self._flag(drop, 0.05, 0.15, False)}]   (scarti; >0.15 alto)\n"
+            f"  utilizzo_link={util:.2f}   [{self._flag(util, 0.85, 0.97, False)}]\n"
+            f"  transizioni_finestra={trans}   compressione={compr:.2f}x\n"
+            f"Stati recenti dell'agente veloce (0=nessuna..4=scarto, ultimi 10 tick): {recent}\n"
+            "Decidi l'azione. Nella giustificazione cita i valori con la loro valutazione "
+            "(BUONO/DEGRADATO/CRITICO), senza invertirne la direzione."
         )
 
     def tick(self, t: float, metrics: dict, state_traj: list) -> GuardrailVerdict:
