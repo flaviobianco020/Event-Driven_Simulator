@@ -60,13 +60,6 @@ class SupervisorController:
         self.tick_interval = tick_interval
         self.log = SupervisorLog()
 
-    @staticmethod
-    def _flag(value: float, good: float, bad: float, higher_better: bool) -> str:
-        """Etichetta qualitativa pre-calcolata, cosi' il modello non deve dedurre la direzione."""
-        if higher_better:
-            return "BUONO" if value >= good else ("CRITICO" if value < bad else "DEGRADATO")
-        return "BUONO" if value <= good else ("CRITICO" if value > bad else "ELEVATO")
-
     def _build_user_prompt(self, metrics: dict, state_traj: list) -> str:
         recent = state_traj[-10:] if state_traj else []
         pdr = metrics.get("pdr", 0.0)
@@ -75,19 +68,22 @@ class SupervisorController:
         util = metrics.get("link_util", 0.0)
         trans = metrics.get("transitions", 0)
         compr = metrics.get("compression", 1.0)
-        # Direzione e flag pre-calcolati: il 3B narra, non deduce (fix scivolone PDR).
+        # Minimale: numeri grezzi + legenda direzione (per la prosa) + regola di
+        # decisione col dominio corretto. NIENTE flag CRITICO per-metrica: iniettavano
+        # conoscenza sbagliata (link saturo != problema) e causavano override spuri.
         return (
-            "Legenda direzione: PDR e compressione = piu' ALTO e' meglio; "
-            "latenza, drop_rate, utilizzo_link, transizioni = piu' BASSO e' meglio.\n"
-            "Finestra metriche correnti (con valutazione gia' calcolata):\n"
-            f"  PDR={pdr:.3f}          [{self._flag(pdr, 0.90, 0.70, True)}]   (consegna; <0.90 = degrado)\n"
-            f"  latenza={lat:.0f}ms      [{self._flag(lat, 300, 800, False)}]   (<300 buona, >800 critica)\n"
-            f"  drop_rate={drop:.3f}     [{self._flag(drop, 0.05, 0.15, False)}]   (scarti; >0.15 alto)\n"
-            f"  utilizzo_link={util:.2f}   [{self._flag(util, 0.85, 0.97, False)}]\n"
-            f"  transizioni_finestra={trans}   compressione={compr:.2f}x\n"
+            "Direzione: PDR = piu' alto meglio (1.0 = tutto consegnato). "
+            "latenza, drop_rate = piu' basso meglio.\n"
+            "REGOLA DI DECISIONE: la salute del sistema si misura su PDR e drop_rate. "
+            "Un utilizzo_link alto (vicino a 1.0) e' NORMALE e atteso: il collo di "
+            "bottiglia e' saturo per natura, non e' un problema di per se'. "
+            "Suggerisci override_state SOLO se PDR e' basso (< 0.85) O drop_rate e' alto "
+            "(> 0.15); in tutti gli altri casi usa endorse.\n"
+            "Finestra metriche correnti:\n"
+            f"  PDR={pdr:.3f}   latenza={lat:.0f}ms   drop_rate={drop:.3f}\n"
+            f"  utilizzo_link={util:.2f}   transizioni_finestra={trans}   compressione={compr:.2f}x\n"
             f"Stati recenti dell'agente veloce (0=nessuna..4=scarto, ultimi 10 tick): {recent}\n"
-            "Decidi l'azione. Nella giustificazione cita i valori con la loro valutazione "
-            "(BUONO/DEGRADATO/CRITICO), senza invertirne la direzione."
+            "Decidi l'azione. Giustifica citando PDR e drop_rate con la direzione corretta."
         )
 
     def tick(self, t: float, metrics: dict, state_traj: list) -> GuardrailVerdict:
