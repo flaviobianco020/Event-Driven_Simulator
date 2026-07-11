@@ -61,12 +61,22 @@ class SupervisorController:
         self.log = SupervisorLog()
 
     @staticmethod
-    def assess(metrics: dict) -> dict:
+    def assess(metrics: dict, recent_states: list | None = None) -> dict:
         """
         Valutazione DETERMINISTICA della salute del sistema (nessun LLM).
         La decisione a soglia e' aritmetica banale: la fa un if, non un modello
         da 3B (che non sa confrontare 0.997 con 0.85). L'LLM poi SPIEGA questo
         verdetto — usa la sua forza (linguaggio), non la sua debolezza (calcolo).
+
+        PRINCIPIO "FIRST, DO NO HARM" (esito sperimentale M3): il target e'
+        sempre lo stato 3 (compressione massima SENZA scarti attivi), mai il 4.
+        Una regola di escalation automatica a 4 e' stata provata e RIMOSSA: nei
+        collassi di capacita' non scattava (bloccata dal PDR floor del guardrail)
+        e sui degradi transitori forzava scarti attivi devastanti (scenario 3:
+        drop +189, PDR -0.175). La policy appresa usa lo stato 4 da sola quando
+        serve; il supervisore non deve mai imporlo su base di soglie statiche.
+
+        `recent_states` e' accettato per contesto/prompt ma non altera il target.
         Ritorna {health, recommended_action, target_state, reason}.
         """
         pdr = metrics.get("pdr", 1.0)
@@ -82,7 +92,7 @@ class SupervisorController:
 
     def _build_user_prompt(self, metrics: dict, state_traj: list) -> str:
         recent = state_traj[-10:] if state_traj else []
-        a = self.assess(metrics)
+        a = self.assess(metrics, state_traj)
         pdr = metrics.get("pdr", 0.0)
         lat = metrics.get("latency_ms", 0.0)
         drop = metrics.get("drop_rate", 0.0)
@@ -116,7 +126,7 @@ class SupervisorController:
           * l'LLM fornisce la SPIEGAZIONE in linguaggio naturale, e puo' elevare a
             flag_retrain se rileva un'anomalia oltre la regola a soglia.
         """
-        a = self.assess(metrics)
+        a = self.assess(metrics, state_traj)
         context = {"metrics": metrics, "state_trajectory": state_traj}
         user_prompt = self._build_user_prompt(metrics, state_traj)
         try:

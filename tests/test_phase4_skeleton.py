@@ -116,6 +116,18 @@ class TestDeterministicAssess:
         a = SupervisorController.assess({"pdr": 0.98, "drop_rate": 0.01, "link_util": 1.0})
         assert a["recommended_action"] == "endorse"
 
+    def test_never_targets_state_4(self):
+        # "First, do no harm" (esito M3): il target e' SEMPRE il 3 (compressione
+        # massima senza scarti attivi), mai il 4 — anche nei casi critici con
+        # compressione gia' attiva. L'escalation automatica a 4 e' stata provata
+        # e rimossa: forzava scarti attivi devastanti sui degradi transitori.
+        for states in ([3, 4, 3, 3, 4, 3, 3, 3, 4, 3],   # gia' comprimendo
+                       [0, 1, 1, 2, 1, 0, 1, 2, 1, 1],   # ancora bassa
+                       None):
+            a = SupervisorController.assess({"pdr": 0.40, "drop_rate": 0.50},
+                                            recent_states=states)
+            assert a["target_state"] == 3
+
     def test_action_is_deterministic_not_from_llm(self):
         # anche se il backend suggerisce override, con metriche sane l'azione resta endorse
         class AlwaysOverride(MockBackend):

@@ -69,12 +69,14 @@ class TestM2Integration:
         res = run_m2(scenario=3, seed=42, ckpt=CKPT, kill_switch=False, verbose=False)
         assert res["override_windows"] >= 1
         assert res["override_steps"] >= 10           # ~una finestra da 30 tick
-        # durante l'override lo stato deve convergere al target 3 e tenerlo:
-        # nella traiettoria post-t=60 deve esistere una corsa di 3 consecutivi
+        # durante l'override lo stato deve convergere allo stato IMPOSTO dal
+        # guardrail (3 o 4 a seconda della regola di escalation) e tenerlo.
+        imposed = next(e["effective_state"] for e in res["supervisor_log"]
+                       if e["effective_state"] is not None)
         traj = res["trajectory"]
         window = traj[60:90]                          # la finestra sotto override
-        assert any(window[i:i + 5] == [3] * 5 for i in range(len(window) - 5)), \
-            f"attesa una tenuta stabile sullo stato 3, traiettoria: {window}"
+        assert any(window[i:i + 5] == [imposed] * 5 for i in range(len(window) - 5)), \
+            f"attesa tenuta stabile sullo stato imposto {imposed}, traiettoria: {window}"
 
     def test_mappo_resumes_after_override(self):
         # dopo la scadenza dell'override il controllo torna a MAPPO:
