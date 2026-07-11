@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Piano formale Fase 4 — supervisore LLM (SLM) sul percorso lento."""
+"""Fase 4 — Supervisore LLM: progetto E risultati (M1-M3 completati).
+
+v2: aggiorna il piano originale con i risultati sperimentali reali delle
+milestone M1 (explainer SLM), M2 (controllo attivo), M3 (valutazione OOD).
+"""
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
@@ -30,12 +34,15 @@ REF = s_("R", "Normal", fontSize=9, leading=13, spaceAfter=5, leftIndent=18, fir
 ABS = s_("AB", "Normal", fontSize=10, leading=15, spaceAfter=6, alignment=TA_JUSTIFY, leftIndent=20, rightIndent=20, textColor=colors.HexColor("#333333"))
 KEYS = s_("K", "Normal", fontSize=10, leading=15, spaceAfter=8, alignment=TA_JUSTIFY, leftIndent=16, rightIndent=10,
           borderWidth=0.8, borderColor=colors.HexColor("#4a8a6a"), borderPadding=7, backColor=colors.HexColor("#f0f8f3"))
+WARNS = s_("W", "Normal", fontSize=10, leading=15, spaceAfter=8, alignment=TA_JUSTIFY, leftIndent=16, rightIndent=10,
+           borderWidth=0.8, borderColor=colors.HexColor("#aa6644"), borderPadding=7, backColor=colors.HexColor("#fbf3ee"))
 
 
 def sp(h=6): return Spacer(1, h)
 def hr(): return HRFlowable(width="100%", thickness=0.6, color=colors.HexColor("#cccccc"), spaceAfter=6, spaceBefore=2)
 def P(t, st=BODY): return Paragraph(t, st)
 def KEY(t): return Paragraph(t, KEYS)
+def WARN(t): return Paragraph(t, WARNS)
 
 
 def tstyle():
@@ -53,194 +60,195 @@ def tstyle():
 
 
 def tbl(data, widths):
-    from reportlab.platypus import Paragraph as PP
     cell = ParagraphStyle("cell", parent=base["Normal"], fontSize=8.5, leading=11)
-    hc = ParagraphStyle("hc", parent=base["Normal"], fontSize=8.5, leading=11, fontName="Helvetica-Bold", textColor=colors.white)
-    wr = [[PP(str(c).replace("\n", "<br/>"), hc if r == 0 else cell) for c in row] for r, row in enumerate(data)]
+    hc = ParagraphStyle("hc", parent=base["Normal"], fontSize=8.5, leading=11,
+                        fontName="Helvetica-Bold", textColor=colors.white)
+    wr = [[Paragraph(str(c).replace("\n", "<br/>"), hc if r == 0 else cell) for c in row]
+          for r, row in enumerate(data)]
     return Table(wr, colWidths=widths, style=tstyle(), repeatRows=1)
 
 
 st = []
 
-# COPERTINA
+# ── COPERTINA ──
 st += [
-    sp(48),
+    sp(44),
     P("Fase 4 — Supervisore LLM per la Gestione Autonoma della Congestione", TITLE),
-    sp(8), P("Piano tecnico: architettura ibrida a due livelli con Small Language Model", SUB),
-    sp(18), hr(), sp(8),
+    sp(8), P("Progetto e risultati sperimentali (milestone M1–M3 completate)", SUB),
+    sp(16), hr(), sp(8),
     P("<b>Autore:</b> Flavio Bianco", AUTH),
     P("<b>Tesi:</b> <i>Towards Agentic Networks: Autonomous Congestion Management</i>", AUTH),
-    P("<b>Anno Accademico 2025/2026</b>", AUTH),
-    sp(20), hr(), sp(8),
+    P("<b>Anno Accademico 2025/2026 — aggiornato con i risultati M1–M3</b>", AUTH),
+    sp(18), hr(), sp(8),
     P("<b>Abstract</b>", s_("AH", "Normal", fontSize=10.5, alignment=TA_CENTER, spaceAfter=6)),
-    P("La Fase 3 ha prodotto una politica MAPPO validata su hardware, che supera il controllo a "
-      "regole. I suoi limiti — politica congelata, assenza di spiegabilita', fragilita' fuori dalla "
-      "distribuzione di addestramento — motivano la Fase 4. Si propone un'architettura <b>ibrida a due "
-      "livelli</b>: la policy MAPPO resta il percorso veloce (decisione per secondo, deterministica, "
-      "deployata come artefatto leggero), mentre un <b>supervisore basato su Small Language Model</b> "
-      "opera sul percorso lento (monitoraggio, spiegazione, correzione dei casi fuori distribuzione). "
-      "L'LLM non entra mai nel ciclo per-secondo: non puo' quindi degradare le prestazioni gia' "
-      "verificate. Si adotta un modello piccolo (1.5-3B, locale, riproducibile) con constrained "
-      "decoding, e la dimensione del modello diventa una variabile sperimentale — un'ablation che "
-      "risponde alla domanda 'qual e' il supervisore piu' piccolo sufficiente?', allineata alla "
-      "letteratura sugli Small Language Model per l'AI agentica.", ABS),
+    P("La Fase 4 estende la politica MAPPO validata su hardware (Fase 3) con un <b>supervisore "
+      "basato su Small Language Model</b> sul percorso lento: monitoraggio, spiegazione in "
+      "linguaggio naturale, intervento vincolato. Questo documento presenta il progetto E i "
+      "risultati delle tre milestone completate. Gli esiti principali, in parte inattesi: "
+      "(1) la separazione fra <b>decisione deterministica</b> e <b>spiegazione LLM</b> e' "
+      "necessaria — un modello da 3B non sa confrontare numeri, ma spiega bene un verdetto "
+      "gia' calcolato; (2) la policy MAPPO e' risultata <b>robusta su tre assi fuori "
+      "distribuzione</b>, ridimensionando il ruolo correttivo del supervisore; (3) gli override "
+      "aggressivi <b>danneggiano</b> (una regola di escalation e' stata provata e rimossa) e i "
+      "<b>guardrail</b> si sono rivelati il componente critico del progetto. Il valore robusto "
+      "del supervisore e': spiegabilita', stabilizzazione marginale, monitoraggio — con il "
+      "principio operativo «first, do no harm».", ABS),
     PageBreak(),
 ]
 
-# 1. MOTIVAZIONE
+# ── 1. MOTIVAZIONE ──
 st += [
     P("1. Motivazione: i limiti della Fase 3", H1),
-    P("La politica MAPPO della Fase 3 e' efficace <b>dentro</b> la sua distribuzione di addestramento, "
-      "ma presenta tre limiti strutturali, intrinseci al paradigma dell'apprendimento per rinforzo:"),
-    P("• <b>Politica congelata</b>: dopo l'addestramento i pesi sono fissi; non si adatta a scenari "
-      "radicalmente nuovi senza un nuovo training.", LI),
-    P("• <b>Assenza di spiegabilita'</b>: e' una rete neurale opaca; non puo' giustificare le proprie "
-      "decisioni a un operatore.", LI),
-    P("• <b>Generalizzazione limitata</b>: su situazioni fuori distribuzione (traffico, guasti, "
-      "topologie mai visti) la policy congelata puo' comportarsi male.", LI),
-    KEY("Punto chiave: questi limiti NON si risolvono con un altro algoritmo di apprendimento per "
-        "rinforzo — sono del paradigma, non dell'algoritmo. Richiedono capacita' di natura diversa "
-        "(ragionamento, spiegazione, adattamento senza retraining). E' precisamente cio' che un agente "
-        "linguistico fornisce. La Fase 4 non sostituisce la Fase 3: la <b>estende</b>."),
-]
+    P("La politica MAPPO della Fase 3 supera il controllo a regole su hardware reale, ma ha tre "
+      "limiti strutturali del paradigma: <b>politica congelata</b> (nessun adattamento senza "
+      "retraining), <b>assenza di spiegabilita'</b> (rete neurale opaca), <b>generalizzazione "
+      "incerta</b> fuori dalla distribuzione di addestramento. Questi limiti non si risolvono con "
+      "un altro algoritmo RL — richiedono capacita' di natura diversa (linguaggio, ragionamento, "
+      "monitoraggio). La Fase 4 non sostituisce la Fase 3: la <b>estende</b> con un livello "
+      "supervisorio."),
 
-# 2. ARCHITETTURA
-st += [
     P("2. Architettura ibrida a due livelli", H1),
-    P("L'architettura separa nettamente due percorsi, secondo l'analogia System 1 / System 2 "
-      "(Kahneman): il riflesso veloce e il ragionamento lento."),
     tbl([
         ["", "Percorso VELOCE (System 1)", "Percorso LENTO (System 2)"],
-        ["Chi", "Actor MAPPO (Fase 3)", "Supervisore LLM (Fase 4)"],
+        ["Chi", "Actor MAPPO (Fase 3)", "Supervisore (Fase 4)"],
         ["Cadenza", "ogni 1 secondo", "ogni ~30 s o su anomalia"],
-        ["Natura", "deterministica, congelata", "ragionamento, adattiva"],
-        ["Costo", "trascurabile (24 KB, Python puro)", "un'inferenza LLM al tick lento"],
-        ["Ruolo", "decide la compressione", "monitora, spiega, corregge OOD"],
-        ["Impatto Fase 4", "INTATTO", "nuovo livello supervisorio"],
-    ], [2.6*cm, 6.6*cm, 6.8*cm]),
-    P("Tabella 1 — I due livelli. L'LLM non entra mai nel ciclo per-secondo.", CAP),
-    KEY("Garanzia fondamentale: poiche' l'LLM opera solo sul percorso lento e il percorso veloce "
-        "resta quello della Fase 3, <b>nessuna scelta di modello LLM puo' degradare</b> la latenza "
-        "(447 ms) o la consegna (PDR 0,943) gia' misurate. L'LLM gestisce il caso comune con "
-        "'endorse' (nessun intervento) e agisce solo sull'eccezione."),
-    PageBreak(),
-]
+        ["Natura", "deterministica, congelata", "regola deterministica + spiegazione LLM"],
+        ["Ruolo", "decide la compressione", "monitora, spiega, interviene con parsimonia"],
+        ["Impatto", "INTATTO", "livello supervisorio additivo"],
+    ], [2.4*cm, 6.6*cm, 7*cm]),
+    P("Tabella 1 — I due livelli. L'LLM non entra mai nel ciclo per-secondo: nessuna scelta di "
+      "modello puo' degradare le prestazioni validate della Fase 3.", CAP),
+    KEY("<b>Evoluzione architetturale emersa in M1</b> — il supervisore stesso e' diventato "
+        "ibrido: la DECISIONE (endorse / override + stato target) e' calcolata da una regola "
+        "deterministica (assess: soglie su PDR e drop rate); l'LLM fornisce SOLO la spiegazione "
+        "in linguaggio naturale e puo' segnalare anomalie (flag_retrain). Motivo empirico: un "
+        "modello da 3B non sa confrontare numeri in modo affidabile (dichiarava «basso» "
+        "un PDR di 0,997 e «alto» un drop di 0,000, ignorando la regola esplicita nel "
+        "prompt). La separazione usa la forza dell'LLM (linguaggio) e ne evita la debolezza "
+        "(aritmetica) — e rafforza l'argomento SLM: 3B basta per spiegare, non gli si chiede di "
+        "calcolare."),
 
-# 3. IL SUPERVISORE
-st += [
-    P("3. Il supervisore: azioni e deliverable", H1),
-    P("3.1 Spazio di azione vincolato", H2),
-    P("Il supervisore riceve solo <b>metriche aggregate</b> (mai il contenuto dei pacchetti — cosi' "
-      "non esiste superficie di prompt injection) e sceglie una di cinque azioni:"),
+    P("3. Il supervisore: azioni, sicurezza, deliverable", H1),
     tbl([
         ["Azione", "Effetto", "Percorso veloce?"],
-        ["endorse", "MAPPO ok, nessun intervento (caso comune)", "no"],
-        ["override_state(k, durata)", "forza uno stato di compressione per una finestra breve", "SI (vincolato)"],
-        ["flag_retrain", "segnala regime fuori distribuzione per il retrain offline", "no"],
+        ["endorse", "nessun intervento (caso comune)", "no"],
+        ["override_state(3, 30s)", "forza la compressione massima senza scarti per una finestra", "SI (vincolato)"],
+        ["flag_retrain", "segnala regime anomalo per retrain offline", "no"],
         ["explain", "sola giustificazione in linguaggio naturale", "no"],
-        ["coordinate(msg)", "messaggio a un peer router (topologie mesh)", "no"],
-    ], [4.6*cm, 8.6*cm, 2.8*cm]),
-    P("Tabella 2 — Le cinque azioni supervisorie. Solo override_state tocca il percorso veloce, in "
-      "modo limitato nel tempo e reversibile.", CAP),
-    P("3.2 I due deliverable", H2),
-    P("<b>Spiegabilita' (contributo qualitativo).</b> MAPPO e' una scatola nera: 'ha scelto ESCALATE'. "
-      "Il supervisore produce: <i>«il flusso video e' salito 3x negli ultimi 20 s mentre il controllo "
-      "e' stabile; escalo la compressione per proteggere la classe di controllo ed evitare la "
-      "saturazione della coda.»</i> Un log leggibile per l'operatore — cio' che la policy neurale da "
-      "sola non puo' dare."),
-    P("<b>Robustezza fuori distribuzione (contributo quantitativo).</b> Il risultato misurabile. Si "
-      "progettano scenari <b>non presenti in addestramento</b> e si confronta MAPPO-da-solo contro "
-      "MAPPO+supervisore: la policy congelata degrada, il supervisore che ragiona recupera. E' il "
-      "numero che dimostra il valore aggiunto della fase."),
-]
-
-# 4. MODELLO SLM
-st += [
-    P("4. Scelta del modello: Small Language Model + ablation", H1),
-    P("Il compito del supervisore e' <b>stretto e strutturato</b>: leggere ~7 metriche, scegliere una "
-      "di cinque azioni, produrre una breve giustificazione, su cadenza lenta. Questo profilo e' il "
-      "caso ideale per uno Small Language Model, coerente con la tesi di Belcak et al. (2024), "
-      "<i>Small Language Models are the Future of Agentic AI</i>: i sotto-compiti agentici ripetitivi "
-      "e ben delimitati non richiedono modelli frontier."),
-    tbl([
-        ["Componente del compito", "Effetto della dimensione del modello"],
-        ["Output strutturato (scegliere l'azione)", "Nessun problema a scendere CON constrained decoding: anche un 1.5B emette sempre un'azione valida"],
-        ["Reasoning fuori distribuzione", "Pavimento: sotto ~1.5B il ragionamento sull'anomalia diventa inaffidabile"],
-        ["Qualita' della spiegazione (prosa)", "Tetto: piu' grande aiuta — un 3B e' decente, un 7B piu' chiaro"],
-    ], [6.2*cm, 9.8*cm]),
-    P("Tabella 3 — Il punto dolce e' 1.5-3B: piccolo abbastanza da essere deployabile e riproducibile, "
-      "grande abbastanza da ragionare e spiegare.", CAP),
-    KEY("Il <b>constrained decoding</b> (schema JSON / grammatica) elimina il rischio principale dello "
-        "scendere di dimensione: il modello piccolo non puo' sbagliare il FORMATO dell'azione, sceglie "
-        "solo QUALE. Questo separa la robustezza del controllo (garantita) dalla qualita' della prosa "
-        "(che degrada dolcemente con la dimensione)."),
-    P("<b>La dimensione come esperimento.</b> Invece di fissare un modello, la dimensione diventa una "
-      "variabile: stesso supervisore con Qwen2.5 0,5B / 1,5B / 3B / 7B (piu' Claude Haiku come tetto). "
-      "Si misura: validita' dell'output strutturato, recupero fuori distribuzione, qualita' della "
-      "spiegazione. Questo trasforma la domanda «quanto piccolo basta?» in un contributo di tesi "
-      "pubblicabile. Modello primario: <b>Qwen2.5-3B</b> locale via Ollama (riproducibile, offline — "
-      "l'argomento di credibilita'); interfaccia model-agnostic, cosi' l'ablation e' un semplice cambio "
-      "di nome modello."),
+        ["coordinate(msg)", "messaggio a un peer (mesh, futuro)", "no"],
+    ], [4.2*cm, 9*cm, 2.8*cm]),
+    P("Tabella 2 — Spazio di azione vincolato. Il target dell'override e' SEMPRE lo stato 3: "
+      "l'escalation automatica allo stato 4 e' stata provata e rimossa (sez. 6.3).", CAP),
+    P("Guardrail (tutti verificati sperimentalmente): azioni solo dallo spazio vincolato "
+      "(constrained decoding + rivalidazione); override limitato nel tempo (max 120 s) e "
+      "reversibile; <b>revoca</b> se il PDR di finestra scende sotto il floor; rifiuto di nuovi "
+      "override sotto il floor; kill switch (riporta a M1); fail-safe sul backend (errore LLM → "
+      "endorse, il percorso veloce non si blocca mai)."),
     PageBreak(),
 ]
 
-# 5. GUARDRAIL
+# ── 4. MODELLO SLM ──
 st += [
-    P("5. Sicurezza: guardrail e kill switch", H1),
-    P("Il supervisore <b>suggerisce</b>; un guardrail decide se applicare. Una decisione errata o "
-      "allucinata del modello non puo' danneggiare il sistema:"),
-    P("• Azioni solo dallo spazio vincolato (garantito dallo schema, ri-validato dal guardrail).", LI),
-    P("• Override limitato nel tempo (max 120 s) e reversibile.", LI),
-    P("• Protezione dura: se il PDR e' gia' sotto una soglia critica, l'override viene rifiutato.", LI),
-    P("• Kill switch: se attivo, ogni azione di controllo e' ignorata e resta il MAPPO puro.", LI),
-    P("• Fallback fail-safe: se il backend LLM va in errore, si ripiega su 'endorse' — il percorso "
-      "veloce non viene mai bloccato.", LI),
-    KEY("Nel peggiore dei casi un override sbagliato tiene uno stato di compressione errato per una "
-        "finestra breve, poi decade automaticamente: danno limitato e reversibile. Il percorso veloce "
-        "(MAPPO) non viene mai spento — l'override sostituisce solo l'azione per la finestra."),
-    P("6. Piano incrementale (milestone)", H1),
+    P("4. Modello: SLM locale e ablation sulla dimensione", H1),
+    P("Il compito del supervisore e' stretto e strutturato — il profilo ideale per uno Small "
+      "Language Model (Belcak et al., 2024). Primario: <b>Qwen2.5-3B via Ollama</b> (locale, "
+      "offline, riproducibile con temperature 0 e seed; tag <font face='Courier'>qwen2.5:3b</font>). "
+      "Interfaccia model-agnostic (Mock / Ollama / Anthropic) con constrained decoding: lo schema "
+      "JSON garantisce output valido a qualunque dimensione."),
+    P("4.1 Risultato ablation (0.5B / 1.5B / 3B / 7B, scenario 3)", H2),
     tbl([
-        ["Milestone", "Contenuto", "Rischio", "Deliverable"],
-        ["M1", "LLM read-only explainer: solo commento in linguaggio naturale sulle decisioni MAPPO, nessuna autorita' di controllo", "nullo", "spiegabilita' (qualitativo), subito"],
-        ["M2", "LLM supervisore con override vincolato + guardrail + kill switch", "basso", "controllo sicuro"],
-        ["M3", "Valutazione fuori distribuzione: scenari nuovi, MAPPO-solo vs MAPPO+LLM; ablation sulla dimensione del modello", "medio", "il risultato quantitativo + il capitolo SLM"],
-        ["M4 (stretch)", "Coordinamento LLM multi-agente su topologia mesh", "alto", "estensione"],
-    ], [2.4*cm, 8.2*cm, 1.8*cm, 3.6*cm]),
-    P("Tabella 4 — M1 e' il cancello di de-risking: si valida che il ragionamento del modello sia sano "
-      "PRIMA di dargli qualsiasi autorita' di controllo (M2).", CAP),
+        ["Modello", "Comportamento osservato sulla spiegazione"],
+        ["Qwen 0.5B", "PAROTA la valutazione iniettata nel prompt: zero errori ma zero interpretazione"],
+        ["Qwen 1.5B", "coerente ma confuso nei dettagli («la forza di una rete di addestramento»)"],
+        ["Qwen 3B", "interpreta la traiettoria (coglie l'anomalia) ma scivola sulla direzione («PDR elevati» con PDR basso)"],
+        ["Qwen 7B", "il migliore: direzione corretta + lettura della traiettoria + rimedio proposto"],
+    ], [2.6*cm, 13.4*cm]),
+    P("Tabella 3 — Ablation sulla dimensione. La qualita' interpretativa scala con la dimensione; "
+      "la metrica automatica «errori di direzione» premia il parroting (0.5B = 0 errori "
+      "perche' non interpreta nulla) e va usata con cautela.", CAP),
+    KEY("Lezioni di metodo dall'ablation: (1) valutare i supervisori SLM sulla sola correttezza "
+        "di direzione e' fuorviante — serve una metrica del valore interpretativo aggiunto; "
+        "(2) «il piu' piccolo sufficiente» dipende dalla barra: per eco della valutazione "
+        "basta 0.5B, per interpretazione genuina serve 7B; il 3B e' il compromesso pratico "
+        "(interpreta, con residui di prosa). (3) L'iper-ingegneria del prompt DANNEGGIA i modelli "
+        "piccoli: flag qualitativi per-metrica hanno causato override spuri (il 3B seguiva ogni "
+        "«CRITICO» ciecamente); la soluzione e' la regola giusta, non piu' flag."),
+
+    P("5. Milestone: piano ed esito", H1),
+    tbl([
+        ["Milestone", "Contenuto", "Esito"],
+        ["M1", "Explainer read-only (kill switch): spiegazioni NL sul loop MAPPO reale",
+         "COMPLETATA — azioni deterministiche corrette, spiegazioni grounded con Qwen-3B; 3 iterazioni di prompt documentate"],
+        ["M2", "Controllo attivo: override applicato al percorso veloce + revoca",
+         "COMPLETATA — scenario 3: PDR +0.008, drop −8, transizioni −20% (5 seed)"],
+        ["M3", "Valutazione OOD su 3 assi + gruppo di controllo",
+         "COMPLETATA — esito inatteso e istruttivo (sez. 6)"],
+        ["M4 (stretch)", "Coordinamento multi-agente su mesh", "non avviata"],
+    ], [1.9*cm, 6.3*cm, 7.8*cm]),
+    P("Tabella 4 — Stato delle milestone.", CAP),
+    PageBreak(),
 ]
 
-# 7. VALUTAZIONE + INTEGRAZIONE
+# ── 6. RISULTATI M3 ──
 st += [
-    P("7. Valutazione e scenari fuori distribuzione", H1),
-    P("Il criterio per uno scenario OOD valido: la policy MAPPO congelata deve <b>fallire davvero</b> "
-      "(essere fuori dal suo training) e un ragionatore deve poter plausibilmente aiutare. Lo scenario "
-      "primario e' il <b>mix di traffico inedito</b> — chiaramente fuori distribuzione (MAPPO ha visto "
-      "solo i sei scenari canonici), costruibile sulla topologia esistente, controllabile. Il "
-      "<b>guasto multi-link correlato</b> e' il secondo (richiede la mesh, va con M4). Metriche di "
-      "confronto: PDR, latenza, drop, piu' — per il supervisore — validita' dell'output strutturato e "
-      "qualita' della spiegazione (giudicata)."),
-    P("8. Integrazione e stato dello scheletro", H1),
-    P("Lo scheletro e' gia' realizzato su un <b>branch dedicato e scartabile</b> "
-      "(<font face='Courier'>phase4-llm-supervisor</font>), <b>disaccoppiato dal motore</b> (nessuna "
-      "modifica a core.py — additivo). Moduli in <font face='Courier'>simulator/supervisor/</font>:"),
-    P("actions.py   — 5 azioni + schema JSON (constrained decoding)\n"
-      "backend.py   — interfaccia model-agnostic: Mock / Ollama (SLM) / Anthropic (Haiku)\n"
-      "guardrail.py — override reversibile+limitato, kill switch, PDR floor, fail-safe\n"
-      "controller.py— tick lento, costruzione prompt, decisione, log spiegabilita'\n"
-      "examples/run_supervisor.py — demo (gira con MockBackend, nessun modello richiesto)\n"
-      "tests/test_phase4_skeleton.py — 13 test; 94/94 totali passano, zero regressioni", MATH),
-    P("Il MockBackend fa girare l'intero flusso senza modelli installati, ed e' anche la baseline "
-      "'nessun ragionamento' dell'ablation. Il passaggio a un modello reale e' un cambio di backend.", BODY),
-    P("9. Rischi e mitigazioni", H1),
+    P("6. Risultati M3: valutazione fuori distribuzione", H1),
+    P("6.1 Protocollo", H2),
+    P("Tre scenari OOD costruiti ad hoc (mai visti in addestramento), ciascuno su un asse di "
+      "novita' diverso; per ogni seed lo stesso episodio gira due volte (MAPPO solo / MAPPO + "
+      "supervisore); gruppo di controllo in-distribution (scenario 3 canonico); 5 seed; KPI "
+      "misurati dal simulatore, indipendenti dal backend LLM (la decisione e' deterministica)."),
     tbl([
-        ["Rischio", "Mitigazione"],
-        ["Latenza dell'LLM", "tick lento (~30 s): una risposta di 5 s e' irrilevante"],
-        ["Allucinazione", "spazio di azione vincolato + guardrail bloccano le azioni dannose"],
-        ["Non-determinismo", "temperature 0 + seed → riproducibile per la tesi"],
-        ["Prompt injection", "l'LLM riceve solo metriche aggregate, mai il payload"],
-        ["Divario sim→real", "validazione su emulatore, come gia' fatto in Fase 3"],
-    ], [5*cm, 11*cm]),
+        ["Scenario OOD", "Asse di novita'"],
+        ["video_flood", "mix inedito: solo VIDEO, 17 pkt/s, nessuna classe protetta in coda (feature di priorita' mai viste)"],
+        ["pulsed", "asse temporale: surge on/off ogni 10 s (in training il carico e' stazionario o cambia una volta)"],
+        ["capacity_collapse", "collasso permanente del collo di bottiglia 10→2 pkt/s (minimo visto: 4, transitorio); metrica aggiuntiva: consegna del flusso CONTROL"],
+    ], [3.4*cm, 12.6*cm]),
+    P("Tabella 5 — I tre assi fuori distribuzione.", CAP),
+
+    P("6.2 Risultati (5 seed, media)", H2),
+    tbl([
+        ["Scenario", "KPI chiave", "MAPPO solo", "+ supervisore", "Lettura"],
+        ["video_flood", "PDR", "0,932", "0,934", "MAPPO robusto; supervisore ≈ neutro (drop −3,6)"],
+        ["pulsed", "PDR / trans.", "0,874 / 29,6", "0,874 / 24,8", "pari sul PDR; supervisore stabilizza (−16% trans., −12 ms)"],
+        ["capacity_collapse", "consegna CONTROL", "0,887", "0,706", "MAPPO protegge da solo (usa lo stato 4); l'override a 3 DANNEGGIA (−0,18), danno contenuto dai guardrail"],
+        ["scenario 3 (controllo)", "PDR / drop", "0,865 / 142", "0,873 / 134", "in-distribution il supervisore aiuta (drop −8, trans. −20%)"],
+    ], [3.1*cm, 2.9*cm, 2.5*cm, 2.6*cm, 4.9*cm]),
+    P("Tabella 6 — M3: MAPPO-solo contro MAPPO+supervisore sui quattro blocchi.", CAP),
+
+    P("6.3 L'esperimento fallito (documentato): escalation automatica allo stato 4", H2),
+    WARN("Per il collasso di capacita' e' stata provata una regola di escalation: se il sistema "
+         "e' critico e la compressione e' gia' attiva, forzare lo stato 4 (scarto attivo delle "
+         "priorita' basse). Esito: <b>fallimento su entrambi i fronti</b>. Nel collasso non "
+         "scattava mai (bloccata dal PDR floor del guardrail); sul degrado transitorio dello "
+         "scenario 3 forzava scarti attivi devastanti (PDR 0,865→0,690, drop +189). La regola e' "
+         "stata rimossa e il principio opposto e' stato adottato e fissato nei test: "
+         "<b>«first, do no harm»</b> — mai lo stato 4 da soglie statiche. Nota "
+         "metodologica: il confine fra oscillazione-da-stabilizzare e uso-necessario dello stato 4 "
+         "NON e' separabile con le metriche di finestra disponibili (PDR e drop quasi identici nei "
+         "due casi) — servono metriche per-classe o un supervisore piu' capace (lavoro futuro)."),
+
+    P("6.4 Conclusioni della Fase 4", H2),
+    KEY("(1) <b>MAPPO e' robusto</b> sui tre assi OOD testati — un risultato pro-Fase 3: la "
+        "strategia appresa (compressione massima civile, stato 4 solo quando serve) e' "
+        "quasi-ottima per qualunque sovraccarico su questa topologia. (2) Il <b>valore robusto del "
+        "supervisore</b> e': spiegabilita' (M1, con SLM 3B locale), stabilizzazione marginale "
+        "(transizioni −8/−20% ovunque, drop −8 in-distribution), monitoraggio. (3) Il "
+        "<b>controllo</b> va esercitato con parsimonia: gli override aggressivi danneggiano, la "
+        "policy appresa spesso ne sa di piu'. (4) I <b>guardrail sono il componente critico</b>: "
+        "revoca + PDR floor hanno trasformato un potenziale disastro in un −0,18 contenuto. Un "
+        "esito parzialmente negativo, riportato con protocollo rigoroso: e' la conclusione "
+        "difendibile della fase."),
+
+    P("7. Stato del codice", H1),
+    P("Branch <font face='Courier'>phase4-llm-supervisor</font> (pushato su GitHub). Moduli: "
+      "supervisor/{actions, backend, guardrail, controller, ood}.py; runner examples/"
+      "{run_supervisor, run_m1_explainer, run_m2_supervisor, run_m3_ood, run_ablation}.py; "
+      "111 test totali (nessuna modifica alle Fasi 1-3, tutto additivo)."),
+    P("python3.12 examples/run_m1_explainer.py --scenario 3 --backend ollama\n"
+      "python3.12 examples/run_m2_supervisor.py --scenario 3 --compare\n"
+      "python3.12 examples/run_m3_ood.py --ood capacity_collapse --seeds 5\n"
+      "python3.12 examples/run_ablation.py --scenario 3", MATH),
+
     sp(8), hr(),
     P("Riferimenti bibliografici", H1),
     P("[1] Belcak, P., et al. (2024). <i>Small Language Models are the Future of Agentic AI.</i> "
@@ -257,7 +265,7 @@ def on_page(canvas, doc):
     canvas.saveState()
     canvas.setFont("Helvetica", 8)
     canvas.setFillColor(colors.HexColor("#888888"))
-    canvas.drawString(2*cm, 1.2*cm, "Piano Fase 4 — Supervisore LLM  |  Towards Agentic Networks")
+    canvas.drawString(2*cm, 1.2*cm, "Fase 4 — Supervisore LLM: progetto e risultati  |  Towards Agentic Networks")
     canvas.drawRightString(W - 2*cm, 1.2*cm, f"Pag. {doc.page}")
     canvas.setStrokeColor(colors.HexColor("#dddddd"))
     canvas.line(2*cm, 1.6*cm, W - 2*cm, 1.6*cm)
@@ -266,6 +274,7 @@ def on_page(canvas, doc):
 
 doc = SimpleDocTemplate(OUT, pagesize=A4, leftMargin=2.3*cm, rightMargin=2.3*cm,
                         topMargin=2.2*cm, bottomMargin=2.2*cm,
-                        title="Piano Fase 4 — Supervisore LLM", author="Flavio Bianco")
+                        title="Fase 4 — Supervisore LLM: progetto e risultati",
+                        author="Flavio Bianco")
 doc.build(st, onFirstPage=on_page, onLaterPages=on_page)
 print(f"PDF generato: {OUT}")
