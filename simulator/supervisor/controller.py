@@ -140,7 +140,12 @@ class SupervisorController:
             justification = f"backend errore ({exc}); spiegazione non disponibile"
             llm_flags_anomaly = False
 
-        # Decisione = deterministica. La spiegazione = dall'LLM.
+        # Decisione di CONTROLLO = 100% deterministica. L'LLM fornisce SOLO la
+        # spiegazione (justification). Nota: sia l'azione (override/endorse) sia
+        # il target dello stato vengono da assess() — MAI dall'output dell'LLM
+        # (vedi simulator/supervisor/DECISION_RATIONALE.md). L'unico segnale che
+        # l'LLM puo' alzare e' flag_retrain: monitoraggio/OOD, NON un'azione di
+        # controllo (non tocca il percorso veloce).
         if a["recommended_action"] == "override_state":
             decision = Decision(action=Action.OVERRIDE_STATE, justification=justification,
                                 target_state=a["target_state"], hold_seconds=30.0)

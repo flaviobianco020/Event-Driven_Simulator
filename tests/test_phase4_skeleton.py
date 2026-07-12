@@ -138,3 +138,16 @@ class TestDeterministicAssess:
         ctrl.tick(0.0, {"pdr": 0.99, "drop_rate": 0.0}, [2, 2, 2])
         assert ctrl.log.entries[-1]["action"] == "endorse"     # decisione deterministica vince
         assert ctrl.current_override(0.0) is None
+
+    def test_llm_output_never_sets_control_action(self):
+        # blindatura (DECISION_RATIONALE.md): con metriche CRITICHE l'override scatta
+        # dalla regola, ma lo STATO TARGET viene da assess (3), MAI dal 4 dell'LLM.
+        # Cosi' ne' l'azione ne' il target di controllo dipendono dall'output del modello.
+        class LiesTarget4(MockBackend):
+            def decide(self, *a, **k):
+                return {"action": "override_state", "target_state": 4,
+                        "hold_seconds": 120, "justification": "il modello vorrebbe il 4"}
+        ctrl = SupervisorController(backend=LiesTarget4())
+        # PDR critico (<0.70) ma sopra il floor del guardrail (0.5) → override approvato
+        ctrl.tick(0.0, {"pdr": 0.60, "drop_rate": 0.20}, [3, 3, 3, 3, 3])
+        assert ctrl.current_override(0.0) == 3     # dalla regola, non il 4 dell'LLM
