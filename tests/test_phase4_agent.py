@@ -73,6 +73,21 @@ class TestAgentDiscrimination:
         assert r["diagnosis"] == "transitorio" and r["reconfigured"] is False
         assert r["pdr"] > 0.85                   # nessun danno da intervento errato
 
+    def test_short_transient_no_intervention(self):
+        # transitorio piu' CORTO della finestra d'attesa → l'agente vede il recupero
+        from simulator.supervisor.ood import build_transient_degradation
+        r = self._run(lambda: build_transient_degradation(seed=42, end_time=260.0,
+                                                          drop_to=2.0, onset=30.0, duration=40.0))
+        assert r["diagnosis"] == "transitorio" and r["reconfigured"] is False
+
+    def test_long_transient_is_the_known_boundary(self):
+        # transitorio piu' LUNGO dell'attesa → l'agente non vede ancora il recupero e
+        # lo scambia per collasso. E' il floor di osservabilita' che riemerge (limite noto).
+        from simulator.supervisor.ood import build_transient_degradation
+        r = self._run(lambda: build_transient_degradation(seed=42, end_time=260.0,
+                                                          drop_to=2.0, onset=30.0, duration=100.0))
+        assert r["reconfigured"] is True   # documenta il confine, non un bug
+
     def test_reconfigure_guardrail_blocks_when_healthy(self):
         # se il sistema non e' critico, la riconfigurazione va rifiutata dal guardrail
         from simulator.supervisor.agent import AgentSession

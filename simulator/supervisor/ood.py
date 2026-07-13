@@ -132,7 +132,14 @@ def build_capacity_collapse(seed: int = 42, end_time: float | None = None) -> OO
     adotta stabilmente. Metrica chiave: consegna del flusso CONTROL
     (env.control_flow_id + env.control_expected).
     """
-    end = end_time or 100.0
+    return _capacity_scenario(seed, end_time or 100.0, drop_to=2.0, onset=20.0,
+                              recover_at=None, name="capacity_collapse")
+
+
+def _capacity_scenario(seed, end, drop_to, onset, recover_at, name):
+    """Costruttore condiviso: mix a 3 classi (con CONTROL) + eventi di link.
+    recover_at=None → collasso PERMANENTE; altrimenti il link torna a 10 a quell'istante
+    (degrado TRANSITORIO di durata recover_at-onset)."""
     topo = NetworkTopology.single_bottleneck(n_sources=3, bottleneck_capacity=10.0,
                                              queue_size=20)
     dst = topo.get_node("dst")
@@ -142,13 +149,30 @@ def build_capacity_collapse(seed: int = 42, end_time: float | None = None) -> OO
            .add_flow(Flow(FlowModel.POISSON, _telemetry_class(), topo.get_node("src1"), dst, rate=5.0))
            .add_flow(ctrl_flow))
     bottleneck = topo.get_link("router", "dst")
-    events = [Event(simulation_time=20.0, type=EventType.LINK_RATE_CHANGE,
-                    link=bottleneck, metadata={"new_rate": 2.0})]
-    env = OODMarlEnv(topo, gen, events, end, seed=seed, name="capacity_collapse")
-    # per la metrica di protezione del controllo (CBR: generati attesi = rate * durata)
+    events = [Event(simulation_time=onset, type=EventType.LINK_RATE_CHANGE,
+                    link=bottleneck, metadata={"new_rate": drop_to})]
+    if recover_at is not None:
+        events.append(Event(simulation_time=recover_at, type=EventType.LINK_RATE_CHANGE,
+                            link=bottleneck, metadata={"new_rate": 10.0}))
+    env = OODMarlEnv(topo, gen, events, end, seed=seed, name=name)
     env.control_flow_id = ctrl_flow.id
     env.control_expected = 3.0 * end
     return env
+
+
+def build_transient_degradation(seed: int = 42, end_time: float | None = None,
+                                drop_to: float = 2.0, onset: float = 30.0,
+                                duration: float = 40.0) -> OODMarlEnv:
+    """
+    Degrado TRANSITORIO controllato: stesso mix del collasso, ma il link crolla a
+    `drop_to` all'istante `onset` e RECUPERA (torna a 10) dopo `duration` secondi.
+    A t=onset e' indistinguibile dal collasso permanente; la differenza emerge solo
+    aspettando. Serve a trovare il CONFINE dell'agente: se `duration` supera la
+    finestra d'attesa dell'agente (~60 s), l'agente non vede il recupero e lo
+    scambia per collasso → il floor di osservabilita' riemerge a scala piu' lunga.
+    """
+    return _capacity_scenario(seed, end_time or 200.0, drop_to=drop_to, onset=onset,
+                              recover_at=onset + duration, name="transient_degradation")
 
 
 OOD_SCENARIOS = {
