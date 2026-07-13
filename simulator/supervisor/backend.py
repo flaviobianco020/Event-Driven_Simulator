@@ -31,7 +31,10 @@ class LLMBackend(ABC):
     name: str = "abstract"
 
     @abstractmethod
-    def decide(self, context: dict, system_prompt: str, user_prompt: str) -> dict:
+    def decide(self, context: dict, system_prompt: str, user_prompt: str,
+               schema: dict | None = None) -> dict:
+        # schema=None → DECISION_JSON_SCHEMA (retrocompatibile con M1/M2/M3).
+        # Un altro schema (es. escalation) consente output strutturati diversi.
         ...
 
 
@@ -48,7 +51,8 @@ class MockBackend(LLMBackend):
     def __init__(self, drop_threshold: float = 0.15):
         self.drop_threshold = drop_threshold
 
-    def decide(self, context: dict, system_prompt: str, user_prompt: str) -> dict:
+    def decide(self, context: dict, system_prompt: str, user_prompt: str,
+               schema: dict | None = None) -> dict:
         m = context.get("metrics", {})
         drop = float(m.get("drop_rate", 0.0))
         if drop > self.drop_threshold:
@@ -82,11 +86,12 @@ class OllamaBackend(LLMBackend):
         self.seed = seed
         self.timeout = timeout
 
-    def decide(self, context: dict, system_prompt: str, user_prompt: str) -> dict:
+    def decide(self, context: dict, system_prompt: str, user_prompt: str,
+               schema: dict | None = None) -> dict:
         payload = {
             "model": self.model,
             "stream": False,
-            "format": DECISION_JSON_SCHEMA,   # constrained decoding
+            "format": schema or DECISION_JSON_SCHEMA,   # constrained decoding
             "options": {"temperature": 0.0, "seed": self.seed},
             "messages": [
                 {"role": "system", "content": system_prompt},
@@ -117,7 +122,8 @@ class AnthropicBackend(LLMBackend):
     def __init__(self, model: str = "claude-haiku-4-5"):
         self.model = model
 
-    def decide(self, context: dict, system_prompt: str, user_prompt: str) -> dict:
+    def decide(self, context: dict, system_prompt: str, user_prompt: str,
+               schema: dict | None = None) -> dict:
         import anthropic  # import lazy: dipendenza opzionale
         client = anthropic.Anthropic()
         resp = client.messages.create(
@@ -125,7 +131,8 @@ class AnthropicBackend(LLMBackend):
             max_tokens=1024,
             system=system_prompt,
             messages=[{"role": "user", "content": user_prompt}],
-            output_config={"format": {"type": "json_schema", "schema": DECISION_JSON_SCHEMA}},
+            output_config={"format": {"type": "json_schema",
+                                      "schema": schema or DECISION_JSON_SCHEMA}},
         )
         text = next(b.text for b in resp.content if b.type == "text")
         return json.loads(text)
