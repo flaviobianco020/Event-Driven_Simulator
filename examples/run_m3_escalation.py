@@ -134,36 +134,56 @@ def main():
                     help="finestre critiche consecutive prima di escalare")
     ap.add_argument("--timeout", type=float, default=120.0,
                     help="timeout Ollama in s (il 7B su poca RAM e' lento a caricare)")
+    ap.add_argument("--scenario", default="collapse",
+                    help="'collapse' (OOD, default) oppure un canonico 1-6 "
+                         "(es. 3 = degrado TRANSITORIO: test di discriminazione — "
+                         "l'LLM deve NON scegliere C qui)")
     ap.add_argument("--verbose", action="store_true")
     args = ap.parse_args()
 
+    # factory scenario: collasso OOD o canonico 1-6
+    if args.scenario == "collapse":
+        make_env = lambda seed: build_capacity_collapse(seed=seed)
+        label = "capacity_collapse (OOD)"
+    else:
+        sc = int(args.scenario)
+        make_env = lambda seed: EDSMarlEnv(sc, seed=seed)
+        label = f"scenario {sc} (canonico — discriminazione)"
+
     backend = build_backend(args.backend, args.model, args.timeout)
-    print(f"  M3-escalation — capacity_collapse, backend {getattr(backend,'name',args.backend)}, "
-          f"{args.seeds} seed\n  (metrica chiave: control_del — consegna del traffico di controllo)\n")
+    print(f"  M3-escalation — {label}, backend {getattr(backend,'name',args.backend)}, "
+          f"{args.seeds} seed\n")
 
     arms = {"MAPPO solo": [], "soglia (S1)": [], "escalation (S1+S2)": []}
     for s in range(args.seeds):
         seed = 42 + s
         m = MARLController.from_checkpoint(args.ckpt)
-        arms["MAPPO solo"].append(episode_alone(build_capacity_collapse(seed=seed), m))
+        arms["MAPPO solo"].append(episode_alone(make_env(seed), m))
         m = MARLController.from_checkpoint(args.ckpt)
-        arms["soglia (S1)"].append(episode_supervised(build_capacity_collapse(seed=seed),
+        arms["soglia (S1)"].append(episode_supervised(make_env(seed),
                                                        m, "mock", args.model, args.window))
         m = MARLController.from_checkpoint(args.ckpt)
         arms["escalation (S1+S2)"].append(
-            episode_escalation(build_capacity_collapse(seed=seed), m, backend,
+            episode_escalation(make_env(seed), m, backend,
                                args.window, args.persist, verbose=args.verbose and s == 0))
 
-    print(f"  {'braccio':<22}{'control_del':>13}{'PDR':>9}{'drop':>9}")
+    has_cd = "control_del" in arms["MAPPO solo"][0]
+    cd_hdr = "control_del" if has_cd else "(no ctrl)"
+    print(f"  {'braccio':<22}{cd_hdr:>13}{'PDR':>9}{'drop':>9}")
     print("  " + "-" * 52)
-    base = np.mean([r["control_del"] for r in arms["MAPPO solo"]])
+    base_pdr = np.mean([r["pdr"] for r in arms["MAPPO solo"]])
+    base = np.mean([r["control_del"] for r in arms["MAPPO solo"]]) if has_cd else base_pdr
     for name, rows in arms.items():
-        cd = np.array([r["control_del"] for r in rows])
         pdr = np.mean([r["pdr"] for r in rows])
         drop = np.mean([r["dropped"] for r in rows])
-        mark = "" if name == "MAPPO solo" else ("  △" if cd.mean() > base else "  ▽")
-        print(f"  {name:<22}{cd.mean():>8.3f}±{cd.std():<4.2f}{pdr:>9.3f}{drop:>9.0f}{mark}")
+        key = np.array([r["control_del"] for r in rows]) if has_cd else np.array([r["pdr"] for r in rows])
+        cd_str = f"{key.mean():>8.3f}±{key.std():<4.2f}" if has_cd else f"{'—':>13}"
+        mark = "" if name == "MAPPO solo" else ("  △" if key.mean() >= base - 1e-9 else "  ▽ DANNO")
+        print(f"  {name:<22}{cd_str}{pdr:>9.3f}{drop:>9.0f}{mark}")
     print("  " + "-" * 52)
+    if not has_cd:
+        print("  (discriminazione: escalation deve NON danneggiare il PDR → l'LLM ha "
+              "scelto A/B, non C)")
     # esempio di ragionamento (primo seed con log)
     for r in arms["escalation (S1+S2)"]:
         if r["esc_log"]:
