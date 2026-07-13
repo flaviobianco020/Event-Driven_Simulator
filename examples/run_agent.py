@@ -97,7 +97,7 @@ def main():
     print("  L'agente puo' INDAGARE (wait_and_observe) prima di decidere.\n")
 
     for label, (make_env, expected_diag, should_act) in SCENARIOS.items():
-        diags, acts, cds, pdrs, correct = [], [], [], [], 0
+        diags, acts, cds, pdrs, correct, self_conc = [], [], [], [], 0, 0
         for s in range(args.seeds):
             seed = 42 + s
             backend = make_backend(args.backend, args.model, args.timeout)  # stato pulito per episodio
@@ -108,6 +108,7 @@ def main():
                                   verbose=args.verbose and s == 0)
             diags.append(r["diagnosis"]); acts.append(r["reconfigured"])
             pdrs.append(r["pdr"]); cds.append(r.get("control_del"))
+            self_conc += int(r.get("self_concluded", False))
             ok = (r["diagnosis"] == expected_diag) and (r["reconfigured"] == should_act)
             correct += ok
 
@@ -118,6 +119,7 @@ def main():
         print(f"     atteso: diagnosi={expected_diag}, intervieni={should_act}")
         print(f"     agente: diagnosi={maj_diag}, intervenuto={sum(acts)}/{len(acts)}  "
               f"{cd_txt}PDR={np.mean(pdrs):.3f}")
+        print(f"     concluso da solo (non scaffold): {self_conc}/{args.seeds}")
         print(f"     CORRETTO: {correct}/{args.seeds}  "
               f"{'✓' if correct == args.seeds else '✗'}\n")
 

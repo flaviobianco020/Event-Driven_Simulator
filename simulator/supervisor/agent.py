@@ -159,6 +159,7 @@ def run_agent_episode(env, mappo, backend, window_s: float = 30.0,
 
     history = []
     diagnosis = "incerto"
+    self_concluded = False
     obs = last
     for step in range(MAX_AGENT_STEPS):
         if sess.done:
@@ -179,8 +180,10 @@ def run_agent_episode(env, mappo, backend, window_s: float = 30.0,
             obs["health"] = res["health_dopo_attesa"]
         elif tool == "trigger_reconfigure":
             res = sess.trigger_reconfigure(obs.get("health", "?"))
+            obs = dict(obs); obs["gia_intervenuto"] = True   # segnala: hai agito → concludi
         else:  # conclude
             diagnosis = call.get("diagnosis", "incerto")
+            self_concluded = True
             history.append({"tool": tool, "diagnosis": diagnosis,
                             "reasoning": call.get("reasoning", "")})
             break
@@ -190,27 +193,46 @@ def run_agent_episode(env, mappo, backend, window_s: float = 30.0,
             print(f"    [step {step}] {tool}({call.get('n_windows','') if tool=='wait_and_observe' else ''}) "
                   f"→ {res}")
 
+    # scaffolding del control-flow: se l'agente non ha concluso (loop), inferisci la
+    # diagnosi dallo stato — la conoscenza c'e' gia' nelle azioni fatte.
+    if not self_concluded:
+        if sess.reconfigured:
+            diagnosis = "collasso_permanente"
+        elif obs.get("health") == "SANO":
+            diagnosis = "transitorio"
+
     sess.finish()
     out = _kpis(sess.env)
-    out.update({"diagnosis": diagnosis, "reconfigured": sess.reconfigured,
+    out.update({"diagnosis": diagnosis, "self_concluded": self_concluded,
+                "reconfigured": sess.reconfigured,
                 "reconfigure_blocked": sess.reconfigure_blocked, "history": history})
     return out
 
 
 def _build_agent_prompt(obs: dict, history: list) -> str:
+    already_waited = any(h.get("tool") == "wait_and_observe" for h in history)
     hist = ""
     if history:
         hist = "\nAzioni gia' fatte:\n" + "\n".join(
             f"  - {h['tool']}: {h.get('result', h.get('diagnosis',''))}" for h in history)
+    # regole di TERMINAZIONE esplicite (l'SLM tende a fare loop di wait senza concludere)
+    if obs.get("gia_intervenuto"):
+        step_hint = ("Hai GIA' riconfigurato. Ora DEVI chiamare conclude con "
+                     "diagnosis=collasso_permanente. Non aspettare oltre.")
+    elif already_waited and obs.get("health") == "SANO":
+        step_hint = ("Hai gia' atteso ed e' tornato SANO → e' un TRANSITORIO. DEVI "
+                     "chiamare conclude con diagnosis=transitorio. Non intervenire.")
+    elif already_waited and obs.get("health") == "CRITICO":
+        step_hint = ("Hai gia' atteso e resta CRITICO → e' un COLLASSO. DEVI chiamare "
+                     "trigger_reconfigure (una sola volta). Non aspettare ancora.")
+    else:
+        step_hint = ("Non hai ancora indagato: USA wait_and_observe per vedere se recupera.")
     return (
         f"SITUAZIONE ATTUALE (simbolica):\n"
         f"  - salute: {obs.get('health','?')}\n"
         f"  - compressione gia' massima: {obs.get('compressione_massima','?')}\n"
         f"  - traiettoria stati recenti: {obs.get('traiettoria', [])}\n"
         f"{hist}\n"
-        "Ricorda: collasso permanente e transitorio all'inizio sembrano uguali. "
-        "Se non hai ancora atteso, USA wait_and_observe per vedere se recupera. "
-        "Se dopo l'attesa e' tornato SANO → transitorio (conclude, niente intervento). "
-        "Se resta CRITICO → collasso permanente (trigger_reconfigure poi conclude). "
-        "Scegli UN tool."
+        f"COSA FARE ORA: {step_hint}\n"
+        "Scegli UN solo tool. Concludi appena hai la risposta: non ripetere wait inutilmente."
     )
