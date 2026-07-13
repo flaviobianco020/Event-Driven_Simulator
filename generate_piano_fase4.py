@@ -363,7 +363,54 @@ st += [
         "In deployment reale l'agente gira asincrono, quindi anche il suo calcolo non ferma il "
         "MAPPO, che continua mentre l'agente pensa."),
 
-    P("8.4 Conclusione dell'arco", H2),
+    P("8.4 Robustezza e il confine del transitorio", H2),
+    P("Due sweep (run_agent_robustness.py, backend policy, 5 seed) caratterizzano dove "
+      "l'agente regge e dove si rompe — non solo «piu' seed».", BODY),
+    tbl([
+        ["Severita' collasso (link cap)", "diagnosi «permanente»", "guadagno consegna controllo"],
+        ["→ 2", "5/5", "+0,061"],
+        ["→ 3", "5/5", "+0,063"],
+        ["→ 4", "5/5", "+0,043"],
+        ["→ 5", "5/5", "+0,025"],
+    ], [6.0*cm, 5.0*cm, 5.0*cm]),
+    P("Tabella 10 — Severita'. L'agente diagnostica «permanente» a ogni gravita' e protegge il "
+      "controllo; l'aiuto scala con la severita' (a cap 5 il MAPPO se la cava gia' da solo).", CAP),
+    tbl([
+        ["Durata del transitorio", "diagnosi", "intervento", "PDR (MAPPO → +agente)"],
+        ["<= 60 s", "transitorio (corretto)", "no", "invariato (nessun danno)"],
+        [">= 80 s", "«collasso» (errato)", "si'", "0,766 → 0,331 (DANNO)"],
+    ], [4.0*cm, 4.6*cm, 2.6*cm, 4.8*cm]),
+    P("Tabella 11 — Durata. Confine netto a ~60-80 s = la finestra d'attesa dell'agente. "
+      "Sotto: corretto, traffico intatto. Sopra: scambiato per collasso, intervento dannoso.", CAP),
+    KEY("<b>Il confine, onesto.</b> L'agente non ELIMINA il floor di osservabilita' — lo SPOSTA a "
+        "scala piu' lunga: risolve i transitori piu' corti della sua finestra d'osservazione "
+        "(indaga e vede il recupero), non quelli piu' lunghi. Mitigabile allungando l'attesa, al "
+        "costo di reattivita' sui collassi veri. Un trade-off caratterizzato con un numero, non "
+        "nascosto."),
+
+    P("8.5 Abbattere il confine: osservare la causa, non il sintomo", H2),
+    P("Il confine nasce dall'osservare il SINTOMO (PDR/drop critico) e aspettare che si risolva. "
+      "Ma i modi di guasto hanno CAUSE diverse, osservabili subito: il collasso e' un calo di "
+      "CAPACITA' (link a capacita' bassa), un transitorio realistico e' spesso un eccesso di "
+      "DOMANDA (link a capacita' normale, carico alto). Un agente con un sensore della causa "
+      "(query_link_capacity) li distingue a t=0, senza aspettare.", BODY),
+    tbl([
+        ["Durata del picco di domanda", "agente ad ATTESA", "agente a CAUSA (legge capacita')"],
+        ["40 s", "transitorio (corretto)", "capacita' 10 → domanda (corretto)"],
+        ["80 s", "«collasso» (errato)", "capacita' 10 → domanda (corretto)"],
+        ["120 s", "«collasso» (errato)", "capacita' 10 → domanda (corretto)"],
+    ], [4.6*cm, 4.8*cm, 6.6*cm]),
+    P("Tabella 12 — Picco di domanda (il link resta a 10). L'agente ad attesa sbaglia il modo sui "
+      "surge lunghi; l'agente a causa legge capacita' normale e conclude «domanda» a QUALUNQUE "
+      "durata → confine abbattuto. Controprova: sul vero collasso legge capacita' 2 e interviene "
+      "(consegna controllo 0,904 → 0,985).", CAP),
+    WARN("<b>Residuo fondamentale.</b> Il sensore-causa distingue i MODI (capacita' vs domanda), "
+         "non la PERMANENZA dentro un modo: un calo di capacita' TRANSITORIO ha capacita' bassa "
+         "come il collasso → li' serve ancora il tempo. Questa parte del limite (non predire il "
+         "futuro dal sintomo) e' irriducibile. La soluzione piena COMBINA i due: sensore-causa per "
+         "il modo, attesa per la permanenza."),
+
+    P("8.6 Conclusione dell'arco", H2),
     KEY("La decisione di controllo per-tick e' <b>numerica</b> (dominio della regola) o "
         "<b>limitata dall'osservabilita'</b> (dominio della feature) — mai un compito "
         "linguistico. I ruoli genuini dell'LLM/SLM sono: <b>spiegazione</b> (M1) e "
@@ -377,8 +424,9 @@ st += [
     P("Branch <font face='Courier'>phase4-llm-supervisor</font> (pushato su GitHub). Moduli: "
       "supervisor/{actions, backend, guardrail, controller, ood, <b>escalation</b>, <b>agent</b>}.py; "
       "runner examples/{run_m1_explainer, run_m2_supervisor, run_m3_ood, run_ablation, "
-      "<b>run_m3_escalation</b>, <b>run_agent</b>, <b>run_agent_perf</b>}.py; <b>129 test</b> "
-      "(nessuna modifica alle Fasi 1-3, tutto additivo).", BODY),
+      "run_m3_escalation, run_agent, run_agent_perf, <b>run_agent_robustness</b>, "
+      "<b>run_agent_cause</b>}.py; <b>133 test</b> (nessuna modifica alle Fasi 1-3, tutto "
+      "additivo).", BODY),
     P("python3.12 examples/run_m1_explainer.py --scenario 3 --backend ollama\n"
       "python3.12 examples/run_m3_ood.py --ood capacity_collapse --seeds 5\n"
       "python3.12 examples/run_agent.py --backend ollama --model qwen2.5:3b --verbose", MATH),
