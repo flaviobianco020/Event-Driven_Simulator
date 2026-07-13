@@ -75,9 +75,24 @@ class AgentSession:
     _obs: object = None
     reconfigured: bool = False
     reconfigure_blocked: int = 0
+    nominal_capacity: float = 0.0
 
     def reset(self):
         self._obs, _ = self.env.reset()
+        # capacita' nominale del collo di bottiglia (prima di qualunque guasto)
+        self.nominal_capacity = self.env.topology.get_link("router", "dst").capacity
+
+    def query_link_capacity(self) -> dict:
+        """
+        Sensore della CAUSA (non del sintomo): capacita' corrente del collo di
+        bottiglia. Capacita' BASSA → calo strutturale (collasso); capacita' NORMALE
+        con sistema critico → il problema e' la domanda (transitorio). Distingue i
+        due modi di guasto SENZA aspettare — abbatte il confine temporale per la
+        coppia collasso-capacita' vs picco-di-domanda.
+        """
+        cap = self.env.topology.get_link("router", "dst").capacity
+        return {"capacity": cap, "nominal": self.nominal_capacity,
+                "capacity_dropped": cap < self.nominal_capacity - 1e-9}
 
     def _advance_one_window(self) -> dict:
         """Avanza una finestra del percorso veloce; ritorna le metriche di finestra."""

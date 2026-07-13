@@ -175,6 +175,40 @@ def build_transient_degradation(seed: int = 42, end_time: float | None = None,
                               recover_at=onset + duration, name="transient_degradation")
 
 
+def build_demand_spike(seed: int = 42, end_time: float | None = None,
+                       onset: float = 30.0, duration: float = 40.0,
+                       surge_rate: float = 16.0) -> OODMarlEnv:
+    """
+    Picco di DOMANDA (non calo di capacita'): il link resta a 10 pkt/s per tutto
+    l'episodio, ma un surge VIDEO si accende in [onset, onset+duration] e spinge il
+    carico oltre la capacita' → congestione → sintomo CRITICO identico al collasso.
+    La differenza rispetto al collasso e' nella CAUSA, osservabile SUBITO: qui la
+    capacita' del link e' NORMALE (carico alto), nel collasso e' BASSA. Un agente
+    che interroga la capacita' (query_link_capacity) li distingue senza aspettare —
+    la durata del surge diventa irrilevante (confine abbattuto per questa coppia).
+    """
+    end = end_time or 200.0
+    topo = NetworkTopology.single_bottleneck(n_sources=4, bottleneck_capacity=10.0,
+                                             queue_size=20)
+    dst = topo.get_node("dst")
+    ctrl_flow = Flow(FlowModel.CONTROL, _control_class(), topo.get_node("src2"), dst, rate=3.0)
+    surge = Flow(FlowModel.VIDEO, _video_class(), topo.get_node("src3"), dst, rate=surge_rate)
+    # NB: il surge NON e' nel generatore (quindi non parte a t=0); lo accendiamo con
+    # FLOW_START a onset. Evita il bug per cui FLOW_START non riattiva un flusso gia'
+    # fermato (core.py::_on_flow_start non rimette flow.active=True).
+    gen = (TrafficGenerator()
+           .add_flow(Flow(FlowModel.POISSON, _video_class(),     topo.get_node("src0"), dst, rate=7.0))
+           .add_flow(Flow(FlowModel.POISSON, _telemetry_class(), topo.get_node("src1"), dst, rate=5.0))
+           .add_flow(ctrl_flow))
+    # surge ON in [onset, onset+duration], poi OFF. La capacita' del link NON cambia.
+    events = [Event(simulation_time=onset, type=EventType.FLOW_START, metadata={"flow": surge}),
+              Event(simulation_time=onset + duration, type=EventType.FLOW_STOP, metadata={"flow": surge})]
+    env = OODMarlEnv(topo, gen, events, end, seed=seed, name="demand_spike")
+    env.control_flow_id = ctrl_flow.id
+    env.control_expected = 3.0 * end
+    return env
+
+
 OOD_SCENARIOS = {
     "video_flood": build_video_flood,
     "pulsed": build_pulsed,

@@ -97,3 +97,34 @@ class TestAgentDiscrimination:
         sess.reset()
         res = sess.trigger_reconfigure(current_health="SANO")
         assert res["applicato"] is False
+
+
+@pytest.mark.skipif(not os.path.exists(CKPT), reason="checkpoint canonico assente")
+class TestCauseSensor:
+    """Il sensore della CAUSA (query_link_capacity) distingue i modi di guasto
+    (calo di capacita' vs picco di domanda) senza aspettare → abbatte il confine."""
+
+    def _session_at_t60(self, env):
+        from simulator.supervisor.agent import AgentSession
+        from simulator.marl import MARLController
+        sess = AgentSession(env=env, mappo=MARLController.from_checkpoint(CKPT))
+        sess.reset()
+        while sess.env.t < 60 and not sess.done:
+            sess._advance_one_window()
+        return sess
+
+    def test_capacity_collapse_reads_low(self):
+        from simulator.supervisor.ood import _capacity_scenario
+        sess = self._session_at_t60(_capacity_scenario(42, 200.0, drop_to=2.0, onset=20.0,
+                                                        recover_at=None, name="c"))
+        q = sess.query_link_capacity()
+        assert q["capacity_dropped"] is True and q["capacity"] == 2.0
+
+    def test_demand_spike_reads_normal(self):
+        # anche con un surge LUNGO (che romperebbe l'agente ad attesa), la capacita'
+        # resta nominale → il sensore-causa dice 'domanda' istantaneamente.
+        from simulator.supervisor.ood import build_demand_spike
+        sess = self._session_at_t60(build_demand_spike(seed=42, end_time=260.0,
+                                                       onset=30.0, duration=120.0))
+        q = sess.query_link_capacity()
+        assert q["capacity_dropped"] is False and q["capacity"] == 10.0
