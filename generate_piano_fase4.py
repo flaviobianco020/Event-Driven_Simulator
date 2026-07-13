@@ -78,7 +78,7 @@ st += [
     sp(16), hr(), sp(8),
     P("<b>Autore:</b> Flavio Bianco", AUTH),
     P("<b>Tesi:</b> <i>Towards Agentic Networks: Autonomous Congestion Management</i>", AUTH),
-    P("<b>Anno Accademico 2025/2026 — aggiornato con i risultati M1–M3</b>", AUTH),
+    P("<b>Anno Accademico 2025/2026 — M1–M3 + escalation e svolta agentica</b>", AUTH),
     sp(18), hr(), sp(8),
     P("<b>Abstract</b>", s_("AH", "Normal", fontSize=10.5, alignment=TA_CENTER, spaceAfter=6)),
     P("La Fase 4 estende la politica MAPPO validata su hardware (Fase 3) con un <b>supervisore "
@@ -90,9 +90,14 @@ st += [
       "gia' calcolato; (2) la policy MAPPO e' risultata <b>robusta su tre assi fuori "
       "distribuzione</b>, ridimensionando il ruolo correttivo del supervisore; (3) gli override "
       "aggressivi <b>danneggiano</b> (una regola di escalation e' stata provata e rimossa) e i "
-      "<b>guardrail</b> si sono rivelati il componente critico del progetto. Il valore robusto "
-      "del supervisore e': spiegabilita', stabilizzazione marginale, monitoraggio — con il "
-      "principio operativo «first, do no harm».", ABS),
+      "<b>guardrail</b> si sono rivelati il componente critico del progetto. L'analisi porta a "
+      "distinguere due limiti — un <b>floor di capacita'</b> (l'SLM non fa aritmetica) e un "
+      "<b>floor di osservabilita'</b> (l'informazione per decidere non e' nell'input) — e a una "
+      "<b>svolta agentica</b>: l'LLM non decide, ma come agente <b>indaga</b> (attende e "
+      "ri-osserva) per procurarsi l'informazione mancante, risolvendo una discriminazione "
+      "(collasso vs transitorio) che batteva sia la soglia sia l'LLM one-shot. I ruoli genuini "
+      "dell'LLM/SLM sono spiegazione e orchestrazione agentica — mai la decisione numerica di "
+      "controllo.", ABS),
     PageBreak(),
 ]
 
@@ -239,15 +244,113 @@ st += [
         "esito parzialmente negativo, riportato con protocollo rigoroso: e' la conclusione "
         "difendibile della fase."),
 
-    P("7. Stato del codice", H1),
+    PageBreak(),
+
+    # ── 7. I DUE FLOOR ──
+    P("7. Perche' l'SLM non decide: i due floor", H1),
+    P("Il tentativo di far DECIDERE all'LLM il controllo e' fallito due volte, per due "
+      "ragioni di natura diversa. La distinzione e' il risultato metodologico centrale della "
+      "fase.", BODY),
+    P("7.1 Floor di CAPACITA' (aritmetica)", H2),
+    P("Dando al modello i numeri grezzi e chiedendogli di applicare la soglia, il 3B "
+      "sbaglia in faccia: dichiara «basso» un PDR di 0,997 e «alto» un drop di 0,000, ignorando "
+      "la regola esplicita nel prompt. Un LLM rappresenta i numeri come token, senza semantica "
+      "di grandezza; il confronto numerico affidabile e' una capacita' che emerge solo a scala "
+      "molto maggiore. Tre riformulazioni del prompt non l'hanno risolto: e' un <b>floor di "
+      "capacita'</b>, non un problema di prompt. Rimedio adottato e blindato nei test: la "
+      "decisione e' una regola deterministica, l'LLM fornisce solo la spiegazione "
+      "(DECISION_RATIONALE.md).", BODY),
+    P("7.2 L'esperimento di escalation (System-2 sul caso ambiguo)", H2),
+    P("Riformulando il compito lontano dalla debolezza (aritmetica) verso la forza "
+      "(classificazione di pattern + scelta fra azioni vagliate), il modello riceve una "
+      "descrizione <b>simbolica</b> (niente numeri grezzi) e la traiettoria di stati. Sonda del "
+      "soffitto sul collasso: forzare lo stato 4 porta la consegna del controllo a 1,000, lo "
+      "stato 3 a 0,463, MAPPO-solo 0,900 — c'e' un enorme margine per la decisione giusta. Sul "
+      "collasso il 3B classifica «collasso» e sceglie lo stato 4: consegna del controllo "
+      "0,721→0,963.", BODY),
+    WARN("Ma il test di DISCRIMINAZIONE lo smaschera. Su un degrado TRANSITORIO (scenario 3, che "
+         "recupera da solo) il 3B da' la risposta <b>identica parola per parola</b> "
+         "(«collasso»→stato 4): PDR 0,857→0,695, un DANNO. E' una <b>macchina che dice sempre la "
+         "stessa cosa</b>, non un ragionatore. Il «successo» sul collasso era eco del prompt, non "
+         "analisi. Lezione metodologica: la fluenza maschera l'assenza di ragionamento — va "
+         "testato su un caso dove la risposta ovvia e' sbagliata."),
+    P("7.3 Floor di OSSERVABILITA' (la causa profonda)", H2),
+    P("Il modello non poteva discriminare perche' <b>l'informazione non era nell'input</b>: al "
+      "momento della decisione, collasso e transitorio hanno gli stessi PDR/drop/traiettoria. "
+      "La differenza e' nel FUTURO (uno recupera, l'altro no). Nessun modello, per quanto "
+      "grande, estrae informazione assente. Il collo di bottiglia non e' il decisore ma "
+      "l'<b>osservabilita'</b>. La feature che separa i due regimi e' il TEMPO: una regola "
+      "deterministica basata sulla persistenza (attendere 2 finestre) discrimina — sul "
+      "transitorio non fa danno (PDR 0,857), sul collasso recupera il controllo "
+      "(0,706→0,920). Il valore era nella feature, non nell'intelligenza.", BODY),
+    tbl([
+        ["", "Floor di CAPACITA' (7.1)", "Floor di OSSERVABILITA' (7.2-7.3)"],
+        ["Compito", "confronta numeri", "classifica pattern + scegli"],
+        ["Ha fatto il compito?", "no (output errato)", "si' (output coerente)"],
+        ["Sintomo", "risposta sbagliata", "risposta COSTANTE"],
+        ["Collo di bottiglia", "il modello", "il dato (informazione assente)"],
+        ["Un modello piu' grande aiuta?", "si'", "no"],
+        ["Rimedio", "regola deterministica", "feature migliore (il tempo)"],
+    ], [3.6*cm, 5.2*cm, 7.2*cm]),
+    P("Tabella 7 — I due floor. Il primo colpevolizza il decisore, il secondo i dati — ed e' il "
+      "piu' importante.", CAP),
+
+    PageBreak(),
+
+    # ── 8. SVOLTA AGENTICA ──
+    P("8. La svolta agentica: l'agente batte l'osservabilita' indagando", H1),
+    P("Un decisore one-shot non puo' indovinare cio' che non vede. Un AGENTE si': puo' "
+      "<b>agire per procurarsi l'informazione mancante</b>. Questa e' la traiettoria del titolo "
+      "«Towards Agentic Networks», ed e' coerente con i risultati: l'LLM non entra nel loop "
+      "veloce (resta deterministico), ma opera sul percorso lento come un <b>operatore</b> che "
+      "usa strumenti su piu' passi.", BODY),
+    P("8.1 Architettura dell'agente", H2),
+    P("Ciclo percepisci → ragiona → usa tool → osserva → ripeti. L'agente non sceglie lo stato "
+      "di compressione; sceglie fra tool vagliati: <font face='Courier'>query_diagnostics</font> "
+      "(percezione), <font face='Courier'>wait_and_observe(n)</font> (IL tool chiave: avanza la "
+      "simulazione e rivela se il sistema recupera), <font face='Courier'>trigger_reconfigure</font> "
+      "(protegge le priorita' alte, solo se critico), <font face='Courier'>conclude</font> "
+      "(diagnosi). Tool-calling a schema vincolato; guardrail sui tool; il loop veloce resta "
+      "MAPPO deterministico.", BODY),
+    P("8.2 Risultato: discriminazione risolta", H2),
+    tbl([
+        ["Scenario", "Cosa fa l'agente", "KPI", "Corretto"],
+        ["collasso permanente", "wait → resta critico → reconfigure → conclude «permanente»",
+         "consegna controllo 0,968", "3/3"],
+        ["transitorio (sc. 3)", "wait → tornato sano → conclude «transitorio», nessun intervento",
+         "PDR 0,936 (nessun danno)", "3/3"],
+    ], [3.3*cm, 7.4*cm, 3.3*cm, 2.0*cm]),
+    P("Tabella 8 — Agente LLM (Qwen2.5-3B): discriminazione 3/3 su entrambi, concludendo da solo. "
+      "Gli stessi due regimi indistinguibili a t=60 vengono separati INDAGANDO (attesa).", CAP),
+    P("Ha richiesto uno <b>scaffolding del control-flow</b>: il 3B faceva le azioni giuste ma "
+      "andava in loop di attesa senza concludere (debolezza di terminazione tipica degli SLM "
+      "come agenti). Regole di terminazione esplicite nel prompt + conclusione forzata a "
+      "esaurimento passi risolvono: dopo, il 3B conclude da solo 3/3.", BODY),
+    KEY("<b>Onesta' per la difesa.</b> L'SLM ESEGUE il protocollo, non lo INVENTA: il prompt "
+        "struttura il flusso. Il merito reale del 3B: sceglie di indagare invece di indovinare, "
+        "mappa l'osservazione al tool giusto, emette tool-call validi con la diagnosi corretta, "
+        "termina. Claim difendibile: «un SLM guida in modo affidabile un ciclo agentico "
+        "tool-using su un compito stretto e ben definito» (Belcak) — non «l'SLM ha scoperto la "
+        "strategia»."),
+    P("8.3 Conclusione dell'arco", H2),
+    KEY("La decisione di controllo per-tick e' <b>numerica</b> (dominio della regola) o "
+        "<b>limitata dall'osservabilita'</b> (dominio della feature) — mai un compito "
+        "linguistico. I ruoli genuini dell'LLM/SLM sono: <b>spiegazione</b> (M1) e "
+        "<b>orchestrazione agentica</b> (indagare, diagnosticare, agire via tool) — mai la "
+        "decisione numerica. Il ciclo agentico risolve il floor di osservabilita' che batteva "
+        "sia la soglia sia l'LLM one-shot, e un SLM da 3B lo esegue in modo affidabile. Questo e' "
+        "«Towards Agentic Networks» dimostrato: l'LLM come operatore autonomo, non come "
+        "controllore."),
+
+    P("9. Stato del codice", H1),
     P("Branch <font face='Courier'>phase4-llm-supervisor</font> (pushato su GitHub). Moduli: "
-      "supervisor/{actions, backend, guardrail, controller, ood}.py; runner examples/"
-      "{run_supervisor, run_m1_explainer, run_m2_supervisor, run_m3_ood, run_ablation}.py; "
-      "111 test totali (nessuna modifica alle Fasi 1-3, tutto additivo)."),
+      "supervisor/{actions, backend, guardrail, controller, ood, <b>escalation</b>, <b>agent</b>}.py; "
+      "runner examples/{run_m1_explainer, run_m2_supervisor, run_m3_ood, run_ablation, "
+      "<b>run_m3_escalation</b>, <b>run_agent</b>}.py; <b>129 test</b> (nessuna modifica alle "
+      "Fasi 1-3, tutto additivo).", BODY),
     P("python3.12 examples/run_m1_explainer.py --scenario 3 --backend ollama\n"
-      "python3.12 examples/run_m2_supervisor.py --scenario 3 --compare\n"
       "python3.12 examples/run_m3_ood.py --ood capacity_collapse --seeds 5\n"
-      "python3.12 examples/run_ablation.py --scenario 3", MATH),
+      "python3.12 examples/run_agent.py --backend ollama --model qwen2.5:3b --verbose", MATH),
 
     sp(8), hr(),
     P("Riferimenti bibliografici", H1),
@@ -258,6 +361,9 @@ st += [
     P("[3] Kahneman, D. (2011). <i>Thinking, Fast and Slow.</i> (Analogia System 1 / System 2.)", REF),
     P("[4] Abate, M., Sacco, A., Fiore, M., &amp; Esposito, F. <i>eFRAC: Elastic Flow-Rate Adaptive "
       "Compression for Network Congestion Management.</i> (Fase 2.)", REF),
+    P("[5] Anon. (2026). <i>CoDi-NetLLM: Adapting Continuous Distributional Outputs for LLM-based "
+      "Networking.</i> (Decoupling decisione/spiegazione; quantificazione dell'incertezza; "
+      "backbone compatto sufficiente per il networking a bassa dimensione.)", REF),
 ]
 
 
