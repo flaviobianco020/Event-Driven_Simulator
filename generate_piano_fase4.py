@@ -9,10 +9,12 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.lib import colors
 from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
-                                TableStyle, PageBreak, HRFlowable)
+                                TableStyle, PageBreak, HRFlowable, Image)
 from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER
+import os
 
 OUT = "/Users/flaviobianco/Desktop/Piano_Fase4_Supervisore_LLM.pdf"
+FIG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent_timeline.png")
 W, H = A4
 base = getSampleStyleSheet()
 
@@ -312,6 +314,12 @@ st += [
       "(protegge le priorita' alte, solo se critico), <font face='Courier'>conclude</font> "
       "(diagnosi). Tool-calling a schema vincolato; guardrail sui tool; il loop veloce resta "
       "MAPPO deterministico.", BODY),
+    sp(4),
+    Image(FIG, width=15*cm, height=15*cm*580/1360),
+    P("Figura 3 — I due orologi. Il percorso veloce (MAPPO) decide ogni secondo senza "
+      "interruzioni; l'agente dorme (costo LLM = 0) finche' la guardia deterministica non "
+      "segnala un guaio, poi si sveglia, INDAGA (attende e ri-osserva) e interviene con un "
+      "override time-boxed. L'LLM non e' mai nel loop da 1 s.", CAP),
     P("8.2 Risultato: discriminazione risolta", H2),
     tbl([
         ["Scenario", "Cosa fa l'agente", "KPI", "Corretto"],
@@ -332,7 +340,30 @@ st += [
         "termina. Claim difendibile: «un SLM guida in modo affidabile un ciclo agentico "
         "tool-using su un compito stretto e ben definito» (Belcak) — non «l'SLM ha scoperto la "
         "strategia»."),
-    P("8.3 Conclusione dell'arco", H2),
+    P("8.3 Non-interferenza e prestazioni (misurate)", H2),
+    P("Due affermazioni del progetto, verificate empiricamente (run_agent_perf.py).", BODY),
+    tbl([
+        ["Esperimento", "Misura", "Esito"],
+        ["A. Non-interferenza", "scenario 3 (l'agente indaga ma non interviene): "
+         "KPI traffico MAPPO-solo vs +agente", "differenza di latenza e PDR = 0,00 su tutti i "
+         "seed → l'agente e' TRASPARENTE, non perturba un solo pacchetto"],
+        ["B. Tempo fast path", "wall-clock per decisione MAPPO vs tick dell'agente",
+         "~0,35 ms/decisione (per-secondo) contro ~secondi per tick LLM, UNA volta per "
+         "finestra sul percorso lento → l'LLM non e' nel loop veloce"],
+        ["C. Prestazioni (collasso)", "MAPPO-solo vs +agente",
+         "consegna controllo +0,051; latenza −1000 ms (la coda si sgonfia scartando le "
+         "priorita' basse); PDR −0,021 (sacrificio voluto del traffico non critico)"],
+    ], [3.3*cm, 5.0*cm, 7.7*cm]),
+    P("Tabella 9 — Misure di non-interferenza e prestazioni. Zero latenza aggiunta; "
+      "miglioramento chirurgico dove serve, con trade-off esplicito.", CAP),
+    KEY("<b>Verdetto misurato.</b> Latenza aggiunta al traffico: ZERO — l'agente e' trasparente "
+        "quando non interviene, e l'LLM (secondi) resta fuori dal loop da 1 s (0,35 ms). Dove "
+        "agisce, MIGLIORA la metrica critica (controllo +5%, latenza −1 s) sacrificando di "
+        "proposito il throughput a bassa priorita': intervento chirurgico, non un pasto gratis. "
+        "In deployment reale l'agente gira asincrono, quindi anche il suo calcolo non ferma il "
+        "MAPPO, che continua mentre l'agente pensa."),
+
+    P("8.4 Conclusione dell'arco", H2),
     KEY("La decisione di controllo per-tick e' <b>numerica</b> (dominio della regola) o "
         "<b>limitata dall'osservabilita'</b> (dominio della feature) — mai un compito "
         "linguistico. I ruoli genuini dell'LLM/SLM sono: <b>spiegazione</b> (M1) e "
@@ -346,8 +377,8 @@ st += [
     P("Branch <font face='Courier'>phase4-llm-supervisor</font> (pushato su GitHub). Moduli: "
       "supervisor/{actions, backend, guardrail, controller, ood, <b>escalation</b>, <b>agent</b>}.py; "
       "runner examples/{run_m1_explainer, run_m2_supervisor, run_m3_ood, run_ablation, "
-      "<b>run_m3_escalation</b>, <b>run_agent</b>}.py; <b>129 test</b> (nessuna modifica alle "
-      "Fasi 1-3, tutto additivo).", BODY),
+      "<b>run_m3_escalation</b>, <b>run_agent</b>, <b>run_agent_perf</b>}.py; <b>129 test</b> "
+      "(nessuna modifica alle Fasi 1-3, tutto additivo).", BODY),
     P("python3.12 examples/run_m1_explainer.py --scenario 3 --backend ollama\n"
       "python3.12 examples/run_m3_ood.py --ood capacity_collapse --seeds 5\n"
       "python3.12 examples/run_agent.py --backend ollama --model qwen2.5:3b --verbose", MATH),
