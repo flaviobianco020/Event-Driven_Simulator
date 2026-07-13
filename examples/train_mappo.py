@@ -87,7 +87,9 @@ def print_eval(ev: dict, episode: int) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description="Training MAPPO Fase 3 EDS")
     ap.add_argument("--episodes", type=int, default=N_EPISODES)
-    ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--seed", type=int, default=0,
+                    help="seed 0 = riproduce il checkpoint canonico "
+                         "(mappo_best_stab.json). Un retrain nudo NON lo peggiora.")
     ap.add_argument("--quick", action="store_true",
                     help="smoke test: 10 episodi, rollout 256")
     ap.add_argument("--stability-penalty", type=float, default=0.0,
