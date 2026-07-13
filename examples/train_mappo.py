@@ -93,6 +93,9 @@ def main() -> None:
     ap.add_argument("--stability-penalty", type=float, default=0.0,
                     help="penalita' di reward per ogni transizione di stato "
                          "(reward shaping, es. 0.03). 0 = reward del documento.")
+    ap.add_argument("--tag", default="",
+                    help="suffisso extra sul nome del checkpoint (es. _4000ep): "
+                         "isola un run sperimentale senza sovrascrivere i canonici.")
     args = ap.parse_args()
 
     episodes = 10 if args.quick else args.episodes
@@ -100,8 +103,8 @@ def main() -> None:
     stab = args.stability_penalty
 
     # suffisso distinto per i run con reward shaping: non sovrascrive
-    # il checkpoint "vanilla" (reward del documento)
-    suffix = "_stab" if stab > 0 else ""
+    # il checkpoint "vanilla" (reward del documento). --tag isola gli esperimenti.
+    suffix = ("_stab" if stab > 0 else "") + args.tag
     best_path = os.path.join(CKPT_DIR, f"mappo_best{suffix}.json")
     last_path = os.path.join(CKPT_DIR, f"mappo_last{suffix}.json")
 
