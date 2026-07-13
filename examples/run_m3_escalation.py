@@ -40,7 +40,19 @@ from simulator.network.congestion import CongestionState  # noqa: E402
 from simulator.supervisor.controller import SupervisorController  # noqa: E402
 from simulator.supervisor.ood import build_capacity_collapse  # noqa: E402
 from simulator.supervisor import escalation as esc  # noqa: E402
+from simulator.supervisor import OllamaBackend, AnthropicBackend, MockBackend  # noqa: E402
 from run_m1_explainer import make_backend, _window_metrics, DEFAULT_CKPT  # noqa: E402
+
+
+def build_backend(name, model, timeout):
+    """Come make_backend ma con timeout esplicito per Ollama (7B lento su poca RAM)."""
+    if name == "oracle":
+        return OracleEscalationBackend()
+    if name == "ollama":
+        return OllamaBackend(model=model, timeout=timeout)
+    if name == "anthropic":
+        return AnthropicBackend()
+    return MockBackend()
 from run_m3_ood import episode_alone, episode_supervised, _kpis  # noqa: E402
 
 
@@ -120,11 +132,12 @@ def main():
     ap.add_argument("--window", type=float, default=30.0)
     ap.add_argument("--persist", type=int, default=1,
                     help="finestre critiche consecutive prima di escalare")
+    ap.add_argument("--timeout", type=float, default=120.0,
+                    help="timeout Ollama in s (il 7B su poca RAM e' lento a caricare)")
     ap.add_argument("--verbose", action="store_true")
     args = ap.parse_args()
 
-    backend = (OracleEscalationBackend() if args.backend == "oracle"
-               else make_backend(args.backend, args.model))
+    backend = build_backend(args.backend, args.model, args.timeout)
     print(f"  M3-escalation — capacity_collapse, backend {getattr(backend,'name',args.backend)}, "
           f"{args.seeds} seed\n  (metrica chiave: control_del — consegna del traffico di controllo)\n")
 
