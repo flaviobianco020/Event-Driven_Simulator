@@ -76,6 +76,8 @@ class AgentSession:
     reconfigured: bool = False
     reconfigure_blocked: int = 0
     nominal_capacity: float = 0.0
+    retracted: bool = False
+    retract_t: float = -1.0
 
     def reset(self):
         self._obs, _ = self.env.reset()
@@ -147,14 +149,32 @@ class AgentSession:
         tail = self.traj[-8:]
         return bool(tail) and sum(s >= 3 for s in tail) >= len(tail) * 0.5
 
-    def finish(self):
-        """Esaurito il ragionamento, porta l'episodio a fine."""
+    def finish(self, monitor: bool = False):
+        """
+        Porta l'episodio a fine. Se monitor=True e un override e' attivo, RI-VALUTA
+        a ogni finestra e lo RITIRA appena la CAUSA e' risolta: rete di sicurezza
+        contro l'errore sul transitorio lungo — il collasso vero non recupera (resta
+        protetto), il transitorio recupera (override ritirato, MAPPO riprende).
+        Rende il costo del confine LIMITATO, non permanente.
+
+        NB: il segnale di recupero e' la CAPACITA' del link (causa), non la salute:
+        lo stato 4 forzato scarta traffico → il PDR resta basso → il sintomo
+        maschererebbe il recupero. La capacita' e' indipendente dall'intervento.
+        Per guasti senza un sensore di causa, il fallback e' sondare (rilasciare
+        una finestra e osservare la salute sotto MAPPO).
+        """
         while not self.done:
             self._advance_one_window()
+            if monitor and self.active_target is not None:
+                cap = self.env.topology.get_link("router", "dst").capacity
+                if cap >= self.nominal_capacity - 1e-9:   # causa risolta → ritira
+                    self.active_target = None
+                    self.retracted = True
+                    self.retract_t = self.env.t
 
 
 def run_agent_episode(env, mappo, backend, window_s: float = 30.0,
-                      verbose: bool = False) -> dict:
+                      verbose: bool = False, monitor: bool = False) -> dict:
     """
     Guida un episodio con l'agente. Ritorna KPI finali + diagnosi + storico tool.
     backend.decide(context, system, user, schema) sceglie il tool (constrained).
@@ -216,10 +236,11 @@ def run_agent_episode(env, mappo, backend, window_s: float = 30.0,
         elif obs.get("health") == "SANO":
             diagnosis = "transitorio"
 
-    sess.finish()
+    sess.finish(monitor=monitor)
     out = _kpis(sess.env)
     out.update({"diagnosis": diagnosis, "self_concluded": self_concluded,
-                "reconfigured": sess.reconfigured,
+                "reconfigured": sess.reconfigured, "retracted": sess.retracted,
+                "retract_t": sess.retract_t,
                 "reconfigure_blocked": sess.reconfigure_blocked, "history": history})
     return out
 

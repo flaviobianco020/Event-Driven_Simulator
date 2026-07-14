@@ -100,6 +100,34 @@ class TestAgentDiscrimination:
 
 
 @pytest.mark.skipif(not os.path.exists(CKPT), reason="checkpoint canonico assente")
+class TestMonitorRetract:
+    """Rete di sicurezza reversibile: dopo un intervento, ritira quando la causa
+    e' risolta → il confine sul transitorio lungo ha costo LIMITATO, non permanente."""
+
+    def _run(self, make_env, monitor):
+        from simulator.marl import MARLController
+        from run_agent import PolicyBackend
+        return run_agent_episode(make_env(), MARLController.from_checkpoint(CKPT),
+                                 PolicyBackend(), monitor=monitor)
+
+    def test_retract_on_transient_recovery(self):
+        from simulator.supervisor.ood import build_transient_degradation
+        mk = lambda: build_transient_degradation(seed=42, end_time=300.0, drop_to=2.0,
+                                                 onset=30.0, duration=120.0)
+        no_mon = self._run(mk, monitor=False)
+        mon = self._run(mk, monitor=True)
+        assert mon["retracted"] is True and no_mon["retracted"] is False
+        assert mon["pdr"] > no_mon["pdr"] + 0.2      # danno fortemente ridotto
+
+    def test_no_retract_on_permanent_collapse(self):
+        from simulator.supervisor.ood import _capacity_scenario
+        mk = lambda: _capacity_scenario(42, 300.0, drop_to=2.0, onset=20.0,
+                                        recover_at=None, name="c")
+        mon = self._run(mk, monitor=True)
+        assert mon["retracted"] is False and mon["control_del"] > 0.85  # resta protetto
+
+
+@pytest.mark.skipif(not os.path.exists(CKPT), reason="checkpoint canonico assente")
 class TestCauseSensor:
     """Il sensore della CAUSA (query_link_capacity) distingue i modi di guasto
     (calo di capacita' vs picco di domanda) senza aspettare → abbatte il confine."""
