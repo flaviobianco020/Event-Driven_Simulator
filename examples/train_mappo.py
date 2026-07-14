@@ -42,21 +42,23 @@ CKPT_DIR = os.path.join(os.path.dirname(__file__), "..", "checkpoints")
 
 
 def evaluate(actor: Actor, seed: int = 10_000,
-             stability_penalty: float = 0.0) -> dict:
+             stability_penalty: float = 0.0,
+             compression_cost: float = 0.0) -> dict:
     """
     Esecuzione deterministica (argmax) sui 6 scenari canonici con i loro
     end_time originali. Restituisce metriche per scenario + reward medio.
-    stability_penalty > 0: il reward di valutazione include la penalita' di
-    transizione, per selezionare il best coerentemente con il training.
+    Gli shaping (stability_penalty, compression_cost) sono applicati anche in
+    valutazione, per selezionare il best coerentemente con l'obiettivo di training.
     """
     rng = np.random.default_rng(seed)
     per_scenario: dict[int, dict] = {}
     rewards = []
     for sc in SCENARIOS:
-        # se il training usa una penalita' di stabilita', la valutazione la
-        # applica anch'essa: cosi' il best selezionato riflette l'obiettivo
-        # reale (task + stabilita'), non solo il task.
-        env = EDSMarlEnv(sc, seed=seed + sc, stability_penalty=stability_penalty)
+        # la valutazione applica gli stessi shaping del training: cosi' il best
+        # selezionato riflette l'obiettivo reale, non solo il task.
+        env = EDSMarlEnv(sc, seed=seed + sc,
+                         stability_penalty=stability_penalty,
+                         compression_cost=compression_cost)
         obs, _state = env.reset()
         done, ep_rew, steps = False, 0.0, 0
         while not done:
@@ -93,15 +95,20 @@ def main() -> None:
     ap.add_argument("--stability-penalty", type=float, default=0.0,
                     help="penalita' di reward per ogni transizione di stato "
                          "(reward shaping, es. 0.03). 0 = reward del documento.")
+    ap.add_argument("--compression-cost", type=float, default=0.0,
+                    help="costo del livello di compressione: r -= cc*(stato/4). "
+                         "Spinge la policy a comprimere solo sotto congestione "
+                         "(es. 0.05). 0 = reward del documento.")
     args = ap.parse_args()
 
     episodes = 10 if args.quick else args.episodes
     rollout_t = 256 if args.quick else ROLLOUT_T
     stab = args.stability_penalty
+    cc = args.compression_cost
 
     # suffisso distinto per i run con reward shaping: non sovrascrive
     # il checkpoint "vanilla" (reward del documento)
-    suffix = "_stab" if stab > 0 else ""
+    suffix = ("_stab" if stab > 0 else "") + ("_cc" if cc > 0 else "")
     best_path = os.path.join(CKPT_DIR, f"mappo_best{suffix}.json")
     last_path = os.path.join(CKPT_DIR, f"mappo_last{suffix}.json")
 
@@ -122,6 +129,8 @@ def main() -> None:
           f"eval ogni {EVAL_EVERY} episodi")
     if stab > 0:
         print(f"  stability penalty = {stab} per transizione (reward shaping)")
+    if cc > 0:
+        print(f"  compression cost  = {cc} * (stato/4) (reward shaping)")
     print("=" * 68)
 
     best_reward = -np.inf
@@ -132,7 +141,8 @@ def main() -> None:
     for ep in range(1, episodes + 1):
         scenario = int(rng.choice(SCENARIOS))
         env = EDSMarlEnv(scenario, seed=int(rng.integers(1, 2**31)),
-                         end_time=EPISODE_END_TIME, stability_penalty=stab)
+                         end_time=EPISODE_END_TIME, stability_penalty=stab,
+                         compression_cost=cc)
         obs, state = env.reset()
         done, ep_rew, steps = False, 0.0, 0
 
@@ -164,7 +174,7 @@ def main() -> None:
                   f"r/step (ultimi 10 ep) = {recent:.4f}")
 
         if ep % EVAL_EVERY == 0 or ep == episodes:
-            ev = evaluate(actor, stability_penalty=stab)
+            ev = evaluate(actor, stability_penalty=stab, compression_cost=cc)
             print_eval(ev, ep)
             if ev["mean_reward"] > best_reward:
                 best_reward = ev["mean_reward"]
@@ -172,12 +182,13 @@ def main() -> None:
                                 meta={"episode": ep,
                                       "eval_reward": best_reward,
                                       "seed": args.seed,
-                                      "stability_penalty": stab})
+                                      "stability_penalty": stab,
+                                      "compression_cost": cc})
                 print(f"  ✔ nuovo best (r={best_reward:.4f}) → {best_path}")
 
     save_checkpoint(last_path, actor, critic,
                     meta={"episode": episodes, "seed": args.seed,
-                          "stability_penalty": stab})
+                          "stability_penalty": stab, "compression_cost": cc})
     dt = time.time() - t0
     print("=" * 68)
     print(f"  Training completato: {episodes} episodi, {n_updates} update PPO "

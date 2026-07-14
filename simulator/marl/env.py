@@ -175,7 +175,8 @@ class EDSMarlEnv:
     def __init__(self, scenario: int, seed: int = 42,
                  end_time: float | None = None,
                  agent_node_ids: list[str] | None = None,
-                 stability_penalty: float = 0.0) -> None:
+                 stability_penalty: float = 0.0,
+                 compression_cost: float = 0.0) -> None:
         self.scenario = scenario
         self.seed = seed
         # penalita' opzionale per ogni cambio di stato (reward shaping):
@@ -183,6 +184,13 @@ class EDSMarlEnv:
         # 0.0 = reward esatto del documento (Tabella 9). Non influenza la
         # policy in deploy: agisce solo sul segnale di training.
         self.stability_penalty = float(stability_penalty)
+        # costo opzionale del LIVELLO di compressione (reward shaping):
+        # r_t -= compression_cost * (stato_medio / 4).
+        # Modella il costo (fedelta'/CPU) della compressione, assente nel
+        # reward del documento: senza, comprimere e' gratis e la policy non ha
+        # incentivo a tornare a NORMAL quando la congestione sparisce.
+        # 0.0 = comportamento invariato.
+        self.compression_cost = float(compression_cost)
         topo, gen, extra_events, canonical_end = _build_scenario(scenario, seed)
         self.end_time = float(end_time if end_time is not None else canonical_end)
         self.topology = topo
@@ -342,9 +350,15 @@ class EDSMarlEnv:
         self.t += DT
         self.sim.scheduler.run_until(self.t)
 
-        # 3-4. osservazioni + reward dalla finestra (meno la penalita' di stabilita')
+        # 3-4. osservazioni + reward dalla finestra, meno gli shaping opzionali:
+        #   - penalita' di stabilita' (per transizione)
+        #   - costo del livello di compressione (stato medio degli agenti / 4)
         deltas = self._window_deltas()
-        reward = self._reward(deltas) - self.stability_penalty * n_transitions
+        mean_state = sum(n.state_machine.current_state.value
+                         for n in self._nodes) / len(self._nodes)
+        reward = (self._reward(deltas)
+                  - self.stability_penalty * n_transitions
+                  - self.compression_cost * (mean_state / 4.0))
         obs, state = self._observe(deltas)
         self._commit_window()
 
