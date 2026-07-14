@@ -138,7 +138,8 @@ class Deployment:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--tick-wall", type=float, default=0.012, help="wall-clock per tick veloce (s)")
+    ap.add_argument("--tick-wall", type=float, default=None,
+                    help="wall-clock per tick veloce (s); default 0.15 con ollama, 0.012 emulato")
     ap.add_argument("--agent-period", type=float, default=0.25, help="wall-clock fra check agente (s)")
     ap.add_argument("--backend", choices=["ollama", "emulated"], default="ollama",
                     help="ollama = inferenza SLM REALE sul thread agente; emulated = sleep")
@@ -151,17 +152,26 @@ def main():
                                       onset=30.0, duration=args.duration)
     dep = Deployment(env, MARLController.from_checkpoint(DEFAULT_CKPT))
     backend = OllamaBackend(model=args.model, timeout=60.0) if args.backend == "ollama" else None
+    # clock: con Ollama la sim deve durare piu' dell'inferenza reale (secondi)
+    tick_wall = args.tick_wall if args.tick_wall is not None else (0.15 if backend else 0.012)
 
     label = f"Ollama {args.model} (inferenza REALE)" if backend else f"emulato ({args.llm_latency*1e3:.0f}ms)"
-    print(f"  DEPLOYMENT — loop veloce (1s/tick @ {args.tick_wall*1e3:.0f}ms wall) + agente async")
+    print(f"  DEPLOYMENT — loop veloce (1s/tick @ {tick_wall*1e3:.0f}ms wall) + agente async")
     print(f"  backend agente: {label}")
-    print(f"  degrado transitorio: link 10→2 a t=30s, recupero a t={30+args.duration:.0f}s\n")
+    print(f"  degrado transitorio: link 10→2 a t=30s, recupero a t={30+args.duration:.0f}s")
+    if backend:   # scalda il modello: la 1a chiamata carica i pesi in RAM (non e' inferenza)
+        print("  scaldo il modello (caricamento pesi, escluso dalla misura)...", flush=True)
+        try:
+            backend.decide({}, SYSTEM_PROMPT, "Rispondi 'ok'.")
+        except Exception as exc:  # noqa: BLE001
+            print(f"  ATTENZIONE: warmup fallito ({exc}) — Ollama attivo? modello scaricato?")
+    print()
     t0 = time.perf_counter()
-    ft = threading.Thread(target=dep.fast_loop, args=(args.tick_wall,))
+    ft = threading.Thread(target=dep.fast_loop, args=(tick_wall,))
     at = threading.Thread(target=dep.agent_loop, args=(args.agent_period, backend, args.llm_latency),
                           daemon=True)
     ft.start(); at.start()
-    ft.join(); at.join(timeout=2.0)
+    ft.join(); at.join(timeout=30.0)      # attende l'eventuale inferenza in volo
     wall = time.perf_counter() - t0
 
     # 1. NON-BLOCCO: intervallo fra tick veloci vs latenza d'inferenza REALE
