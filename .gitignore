@@ -8,3 +8,6 @@ checkpoints/
 
 # Log runtime
 logs/*.log
+
+# Tracce di osservazione MAPPO (artefatti di run, schema eds-mappo-observation-trace-v1)
+logs/*.json
