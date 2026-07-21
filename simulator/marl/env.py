@@ -21,6 +21,8 @@ a 100 s (doc Tabella 10, riga Training).
 """
 from __future__ import annotations
 
+import os
+
 import numpy as np
 
 from ..config import ConfigurationManager
@@ -50,8 +52,12 @@ LAMBDA_FAIR = 0.2    # peso Jain (doc Tabella 9)
 # Gate del costo di compressione (variante "gated"): il costo e' pieno quando la
 # rete e' scarica e sfuma a zero sotto congestione. Riferimenti oltre cui la
 # compressione e' pienamente giustificata (occupancy di coda / frazione di perdita).
-COMP_COST_OCC_REF = 0.5
-COMP_COST_LOSS_REF = 0.05
+# NB: soglie basse (0.2 / 0.01) = gate "aggressivo": il costo si azzera gia' a
+# congestione media, cosi' la policy comprime sotto carico (recupera il PDR che il
+# gate a 0.5/0.05 sacrificava) ma paga penalita' piena da scarica (S2 resta pulito).
+# Override per ablation: EDS_COMP_COST_OCC_REF / EDS_COMP_COST_LOSS_REF.
+COMP_COST_OCC_REF = float(os.environ.get("EDS_COMP_COST_OCC_REF", "0.2"))
+COMP_COST_LOSS_REF = float(os.environ.get("EDS_COMP_COST_LOSS_REF", "0.01"))
 
 
 class AgentControlledStateMachine(CongestionStateMachine):
