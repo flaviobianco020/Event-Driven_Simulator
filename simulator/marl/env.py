@@ -47,6 +47,11 @@ LAT_MAX = 2.0        # soglia latenza per traffico di controllo (doc Tabella 9)
 LAMBDA_DROP = 0.3    # peso drop rate (doc Tabella 9)
 LAMBDA_LAT = 0.2     # peso latenza (doc Tabella 9)
 LAMBDA_FAIR = 0.2    # peso Jain (doc Tabella 9)
+# Gate del costo di compressione (variante "gated"): il costo e' pieno quando la
+# rete e' scarica e sfuma a zero sotto congestione. Riferimenti oltre cui la
+# compressione e' pienamente giustificata (occupancy di coda / frazione di perdita).
+COMP_COST_OCC_REF = 0.5
+COMP_COST_LOSS_REF = 0.05
 
 
 class AgentControlledStateMachine(CongestionStateMachine):
@@ -356,9 +361,22 @@ class EDSMarlEnv:
         deltas = self._window_deltas()
         mean_state = sum(n.state_machine.current_state.value
                          for n in self._nodes) / len(self._nodes)
+        # Costo di compressione GATED sulla congestione: penalizza il livello di
+        # compressione solo quando NON serve. congestion in [0,1] = pressione reale
+        # (occupancy di coda OPPURE perdita); comp_gate=1 a rete scarica (costo
+        # pieno -> torna a NORMAL), comp_gate=0 sotto congestione (nessun costo ->
+        # comprime liberamente). Cosi' la policy impara a legare la compressione
+        # alla congestione, non all'utilizzo del link.
+        mean_occ = sum(n.state_machine.ewma_occupancy
+                       for n in self._nodes) / len(self._nodes)
+        gen_w = max(deltas["gen"], 1)
+        loss = min(deltas["drop"] / gen_w, 1.0)
+        congestion = max(min(mean_occ / COMP_COST_OCC_REF, 1.0),
+                         min(loss / COMP_COST_LOSS_REF, 1.0))
+        comp_gate = 1.0 - congestion
         reward = (self._reward(deltas)
                   - self.stability_penalty * n_transitions
-                  - self.compression_cost * (mean_state / 4.0))
+                  - self.compression_cost * (mean_state / 4.0) * comp_gate)
         obs, state = self._observe(deltas)
         self._commit_window()
 
